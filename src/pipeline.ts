@@ -26,6 +26,11 @@ export async function executePipeline(
     for (const [op, params] of Object.entries(step)) {
       if (debug) debugStepStart(i + 1, total, op, params);
       data = await executeStep(page, op, params, data, args);
+      // Detect error objects returned by steps (e.g. tap store not found)
+      if (data && typeof data === 'object' && !Array.isArray(data) && data.error) {
+        process.stderr.write(`  ${chalk.yellow('⚠')}  ${chalk.yellow(op)}: ${data.error}\n`);
+        if (data.hint) process.stderr.write(`  ${chalk.dim('💡')} ${chalk.dim(data.hint)}\n`);
+      }
       if (debug) debugStepResult(op, data);
     }
   }

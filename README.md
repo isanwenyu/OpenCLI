@@ -81,7 +81,7 @@ Public API commands (`hackernews`, `github search`, `v2ex`) need no browser at a
 |------|----------|------|
 | **bilibili** | `hot` `search` `me` `favorite` `history` `feed` `user-videos` | 🔐 Browser |
 | **zhihu** | `hot` `search` `question` | 🔐 Browser |
-| **xiaohongshu** | `search` `feed` | 🔐 Browser |
+| **xiaohongshu** | `search` `me` `notifications` `feed` | 🔐 Browser |
 | **twitter** | `trending` | 🔐 Browser |
 | **reddit** | `hot` | 🔐 Browser |
 | **github** | `trending` `search` | 🔐 / 🌐 |

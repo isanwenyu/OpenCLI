@@ -81,7 +81,7 @@ npm install -g @jackwener/opencli@latest
 |------|------|------|
 | **bilibili** | `hot` `search` `me` `favorite` `history` `feed` `user-videos` | 🔐 浏览器 |
 | **zhihu** | `hot` `search` `question` | 🔐 浏览器 |
-| **xiaohongshu** | `search` `feed` | 🔐 浏览器 |
+| **xiaohongshu** | `search` `me` `notifications` `feed` | 🔐 浏览器 |
 | **twitter** | `trending` | 🔐 浏览器 |
 | **reddit** | `hot` | 🔐 浏览器 |
 | **github** | `trending` `search` | 🔐 / 🌐 |

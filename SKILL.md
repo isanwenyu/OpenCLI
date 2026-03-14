@@ -55,6 +55,9 @@ opencli zhihu question --id 34816524     # 问题详情和回答
 
 # 小红书 (browser)
 opencli xiaohongshu search --keyword "美食"  # 搜索笔记
+opencli xiaohongshu me                        # 我的信息
+opencli xiaohongshu notifications             # 通知（mentions/likes/connections）
+opencli xiaohongshu feed --limit 10           # 推荐 Feed
 
 # GitHub (trending=browser, search=public)
 opencli github trending --limit 10       # GitHub Trending
@@ -224,6 +227,7 @@ cli({
 | `sort` | Sort items | `sort: { by: score, order: desc }` |
 | `limit` | Cap result count | `limit: ${{ args.limit }}` |
 | `intercept` | Declarative XHR capture | `intercept: { trigger: "navigate:...", capture: "api/hot" }` |
+| `tap` | Store action + XHR capture | `tap: { store: "feed", action: "fetchFeeds", capture: "homefeed" }` |
 | `snapshot` | Page accessibility tree | `snapshot: { interactive: true }` |
 | `click` | Click element | `click: ${{ ref }}` |
 | `type` | Type text | `type: { ref: "@1", text: "hello" }` |

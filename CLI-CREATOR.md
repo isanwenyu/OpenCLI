@@ -106,6 +106,26 @@ opencli cascade https://api.example.com/hot
 
 ## Step 3: 编写适配器
 
+### YAML vs TS？先看决策树
+
+```
+你的 pipeline 里有 evaluate 步骤（内嵌 JS 代码）？
+  → ✅ 用 TypeScript (src/clis/<site>/<name>.ts)，需在 index.ts 注册
+  → ❌ 纯声明式（navigate + tap + map + limit）？
+       → ✅ 用 YAML (src/clis/<site>/<name>.yaml)，放入即自动注册
+```
+
+| 场景 | 选择 | 示例 |
+|------|------|------|
+| 纯 fetch/select/map/limit | YAML | `v2ex/hot.yaml`, `hackernews/top.yaml` |
+| navigate + evaluate(fetch) + map | YAML（评估复杂度） | `zhihu/hot.yaml` |
+| navigate + tap + map | YAML ✅ | `xiaohongshu/feed.yaml`, `xiaohongshu/notifications.yaml` |
+| 有复杂 JS 逻辑（Pinia state 读取、条件分支） | TS | `xiaohongshu/me.ts`, `bilibili/me.ts` |
+| XHR 拦截 + 签名 | TS | `xiaohongshu/search.ts` |
+| GraphQL / 分页 / Wbi 签名 | TS | `bilibili/search.ts`, `twitter/search.ts` |
+
+> **经验法则**：如果你发现 YAML 里嵌了超过 10 行 JS，改用 TS 更可维护。
+
 ### 方式 A: YAML Pipeline（声明式，推荐）
 
 文件路径: `src/clis/<site>/<name>.yaml`，放入即自动注册。
@@ -230,9 +250,65 @@ pipeline:
 columns: [rank, title, type, author, votes]
 ```
 
+#### Tier 4 — Store Action Bridge（`tap` 步骤，intercept 策略推荐）
+
+适用于 Vue + Pinia/Vuex 的网站（如小红书），无须手动写 XHR 拦截代码：
+
+```yaml
+# src/clis/xiaohongshu/notifications.yaml
+site: xiaohongshu
+name: notifications
+description: "小红书通知"
+domain: www.xiaohongshu.com
+strategy: intercept
+browser: true
+
+args:
+  type:
+    type: str
+    default: mentions
+    description: "Notification type: mentions, likes, or connections"
+  limit:
+    type: int
+    default: 20
+
+columns: [rank, user, action, content, note, time]
+
+pipeline:
+  - navigate: https://www.xiaohongshu.com/notification
+  - wait: 3
+  - tap:
+      store: notification       # Pinia store name
+      action: getNotification   # Store action to call
+      args:                     # Action arguments
+        - ${{ args.type | default('mentions') }}
+      capture: /you/            # URL pattern to capture response
+      select: data.message_list # Extract sub-path from response
+      timeout: 8
+  - map:
+      rank: ${{ index + 1 }}
+      user: ${{ item.user_info.nickname }}
+      action: ${{ item.title }}
+      content: ${{ item.comment_info.content }}
+  - limit: ${{ args.limit | default(20) }}
+```
+
+> **`tap` 步骤自动完成**：注入 fetch+XHR 双拦截 → 查找 Pinia/Vuex store → 调用 action → 捕获匹配 URL 的响应 → 清理拦截。  
+> 如果 store 或 action 找不到，会返回 `hint` 列出所有可用的 store actions，方便调试。
+
+| tap 参数 | 必填 | 说明 |
+|---------|------|------|
+| `store` | ✅ | Pinia store 名称（如 `feed`, `search`, `notification`） |
+| `action` | ✅ | Store action 方法名 |
+| `capture` | ✅ | URL 子串匹配（匹配网络请求 URL） |
+| `args` | ❌ | 传给 action 的参数数组 |
+| `select` | ❌ | 从 captured JSON 中提取的路径（如 `data.items`） |
+| `timeout` | ❌ | 等待网络响应的超时秒数（默认 5s） |
+| `framework` | ❌ | `pinia` 或 `vuex`（默认自动检测） |
+
 ### 方式 B: TypeScript 适配器（编程式）
 
-适用于需要 XHR 拦截、GraphQL、分页、复杂数据转换等场景。
+适用于需要嵌入 JS 代码读取 Pinia state、XHR 拦截、GraphQL、分页、复杂数据转换等场景。
 
 文件路径: `src/clis/<site>/<name>.ts`，还需要在 `src/clis/index.ts` 中 import 注册。
 
@@ -379,24 +455,45 @@ opencli mysite hot --limit 3 -f json   # JSON 输出确认字段完整
 
 ### tap 步骤调试（intercept 策略专用）
 
-tap 步骤依赖正确的 Pinia store name 和 action name。如果不确定：
+> **⚠️ 不要猜 store name / action name**。先用 evaluate 探索，再写 YAML。
+
+#### Step 1: 列出所有 Pinia store
+
+在浏览器中打开目标网站后：
 
 ```bash
-# 运行 evaluate 探索 Pinia store 结构
 opencli evaluate "(() => {
   const app = document.querySelector('#app')?.__vue_app__;
   const pinia = app?.config?.globalProperties?.\$pinia;
   return [...pinia._s.keys()];
 })()"
+# 输出: ["user", "feed", "search", "notification", ...]
 ```
 
-tap 的错误提示会列出可用的 actions，例如：
+#### Step 2: 查看 store 的 action 名称
+
+故意写一个错误 action 名，tap 会返回所有可用 actions：
+
 ```
-{ error: 'Action not found: fetchData on store user',
-  hint: 'Available: getProfile, updateInfo, logout' }
+⚠  tap: Action not found: wrongName on store notification
+💡 Available: getNotification, replyComment, getNotificationCount, reset
 ```
 
-根据提示修正 action name 即可。
+#### Step 3: 用 network requests 确认 capture 模式
+
+```bash
+# 在浏览器打开目标页面，查看网络请求
+# 找到目标 API 的 URL 特征（如 "/you/mentions"、"homefeed"）
+```
+
+#### 完整流程
+
+```
+ ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌────────┐
+ │ 1. navigate  │ ──▶ │ 2. 探索 store │ ──▶ │ 3. 写 YAML   │ ──▶ │ 4. 测试 │
+ │    到目标页面  │     │ name/action  │     │    tap 步骤   │     │ 运行验证 │
+ └──────────────┘     └──────────────┘     └──────────────┘     └────────┘
+```
 
 ### Verbose 模式
 

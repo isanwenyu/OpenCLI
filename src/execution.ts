@@ -123,7 +123,11 @@ export async function executeCommand(
     const BrowserFactory = getBrowserFactory();
     return browserSession(BrowserFactory, async (page) => {
       // Cookie/header strategies require same-origin context for credentialed fetch.
-      if ((cmd.strategy === Strategy.COOKIE || cmd.strategy === Strategy.HEADER) && cmd.domain) {
+      // Skip pre-navigation for boss adapters — they all handle their own goto()
+      // via common.ts, and pre-navigating would cause redundant double page loads.
+      // Other TS adapters (weread, etc.) may still rely on this pre-navigation.
+      const skipPreNav = cmd.site === 'boss';
+      if (!skipPreNav && (cmd.strategy === Strategy.COOKIE || cmd.strategy === Strategy.HEADER) && cmd.domain) {
         try { await page.goto(`https://${cmd.domain}`); await page.wait(2); } catch {}
       }
       return runWithTimeout(runCommand(cmd, page, kwargs, debug), {

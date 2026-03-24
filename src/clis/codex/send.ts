@@ -1,4 +1,5 @@
 import { cli, Strategy } from '../../registry.js';
+import { SelectorError } from '../../errors.js';
 import type { IPage } from '../../types.js';
 
 export const sendCommand = cli({
@@ -23,7 +24,7 @@ export const sendCommand = cli({
         }
 
         if (!composer) {
-          throw new Error('Could not find Composer input element in Codex UI');
+          throw new SelectorError('Composer input', 'Could not find Composer input element in Codex UI');
         }
 
         composer.focus();

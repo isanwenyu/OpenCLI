@@ -41,18 +41,16 @@ export function getMonoreposDir(): string {
   return path.join(getHomeDir(), '.opencli', 'monorepos');
 }
 
+export type PluginSourceRecord =
+  | { kind: 'git'; url: string }
+  | { kind: 'local'; path: string }
+  | { kind: 'monorepo'; url: string; repoName: string; subPath: string };
+
 export interface LockEntry {
-  source: string;
+  source: PluginSourceRecord;
   commitHash: string;
   installedAt: string;
   updatedAt?: string;
-  /** Present when this plugin comes from a monorepo. */
-  monorepo?: {
-    /** Monorepo directory name under ~/.opencli/monorepos/ */
-    name: string;
-    /** Relative path of this sub-plugin within the monorepo. */
-    subPath: string;
-  };
 }
 
 export interface PluginInfo {
@@ -75,11 +73,6 @@ interface ParsedSource {
   cloneUrl?: string;
   localPath?: string;
 }
-
-type PluginSourceRecord =
-  | { kind: 'git'; url: string }
-  | { kind: 'local'; path: string }
-  | { kind: 'monorepo'; url: string; repoName: string; subPath: string };
 
 function parseStoredPluginSource(source?: string): PluginSourceRecord | undefined {
   if (!source) return undefined;
@@ -107,19 +100,90 @@ function toLocalPluginSource(pluginDir: string): string {
   return toStoredPluginSource({ kind: 'local', path: pluginDir });
 }
 
-function resolvePluginSource(lockEntry: LockEntry | undefined, pluginDir: string): PluginSourceRecord | undefined {
-  const rawSource = lockEntry?.source ?? getPluginSource(pluginDir);
-  const parsed = parseStoredPluginSource(rawSource);
-  if (!parsed) return undefined;
-  if (parsed.kind === 'git' && lockEntry?.monorepo) {
-    return {
-      kind: 'monorepo',
-      url: parsed.url,
-      repoName: lockEntry.monorepo.name,
-      subPath: lockEntry.monorepo.subPath,
-    };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeLegacyMonorepo(
+  value: unknown,
+): { name: string; subPath: string } | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.name !== 'string' || typeof value.subPath !== 'string') return undefined;
+  return { name: value.name, subPath: value.subPath };
+}
+
+function normalizePluginSource(
+  source: unknown,
+  legacyMonorepo?: { name: string; subPath: string },
+): PluginSourceRecord | undefined {
+  if (typeof source === 'string') {
+    const parsed = parseStoredPluginSource(source);
+    if (!parsed) return undefined;
+    if (parsed.kind === 'git' && legacyMonorepo) {
+      return {
+        kind: 'monorepo',
+        url: parsed.url,
+        repoName: legacyMonorepo.name,
+        subPath: legacyMonorepo.subPath,
+      };
+    }
+    return parsed;
   }
-  return parsed;
+
+  if (!isRecord(source) || typeof source.kind !== 'string') return undefined;
+  switch (source.kind) {
+    case 'git':
+      return typeof source.url === 'string'
+        ? { kind: 'git', url: source.url }
+        : undefined;
+    case 'local':
+      return typeof source.path === 'string'
+        ? { kind: 'local', path: path.resolve(source.path) }
+        : undefined;
+    case 'monorepo':
+      return typeof source.url === 'string'
+        && typeof source.repoName === 'string'
+        && typeof source.subPath === 'string'
+        ? {
+            kind: 'monorepo',
+            url: source.url,
+            repoName: source.repoName,
+            subPath: source.subPath,
+          }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeLockEntry(value: unknown): LockEntry | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const legacyMonorepo = normalizeLegacyMonorepo(value.monorepo);
+  const source = normalizePluginSource(value.source, legacyMonorepo);
+  if (!source) return undefined;
+  if (typeof value.commitHash !== 'string' || typeof value.installedAt !== 'string') {
+    return undefined;
+  }
+
+  const entry: LockEntry = {
+    source,
+    commitHash: value.commitHash,
+    installedAt: value.installedAt,
+  };
+
+  if (typeof value.updatedAt === 'string') {
+    entry.updatedAt = value.updatedAt;
+  }
+
+  return entry;
+}
+
+function resolvePluginSource(lockEntry: LockEntry | undefined, pluginDir: string): PluginSourceRecord | undefined {
+  if (lockEntry) {
+    return lockEntry.source;
+  }
+  return parseStoredPluginSource(getPluginSource(pluginDir));
 }
 
 function resolveStoredPluginSource(lockEntry: LockEntry | undefined, pluginDir: string): string | undefined {
@@ -390,7 +454,30 @@ export interface ValidationResult {
 export function readLockFile(): Record<string, LockEntry> {
   try {
     const raw = fs.readFileSync(getLockFilePath(), 'utf-8');
-    return JSON.parse(raw) as Record<string, LockEntry>;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isRecord(parsed)) return {};
+
+    const lock: Record<string, LockEntry> = {};
+    let changed = false;
+
+    for (const [name, entry] of Object.entries(parsed)) {
+      const normalized = normalizeLockEntry(entry);
+      if (!normalized) {
+        changed = true;
+        continue;
+      }
+
+      lock[name] = normalized;
+      if (JSON.stringify(entry) !== JSON.stringify(normalized)) {
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      writeLockFile(lock);
+    }
+
+    return lock;
   } catch {
     return {};
   }
@@ -632,7 +719,7 @@ function installSinglePlugin(
     const lock = readLockFile();
     if (commitHash) {
       upsertLockEntry(lock, pluginName, {
-        source: cloneUrl,
+        source: { kind: 'git', url: cloneUrl },
         commitHash,
       });
       writeLockFile(lock);
@@ -689,7 +776,7 @@ function installLocalPlugin(localPath: string, name: string): string {
   const lock = readLockFile();
   const commitHash = getCommitHash(localPath);
   upsertLockEntry(lock, pluginName, {
-    source: toLocalPluginSource(resolvedPath),
+    source: { kind: 'local', path: resolvedPath },
     commitHash: commitHash ?? 'local',
   });
   writeLockFile(lock);
@@ -713,7 +800,7 @@ function updateLocalPlugin(
   postInstallLifecycle(pluginDir);
 
   upsertLockEntry(lock, name, {
-    source: lockEntry?.source ?? toLocalPluginSource(pluginDir),
+    source: lockEntry?.source ?? { kind: 'local', path: pluginDir },
     commitHash: getCommitHash(pluginDir) ?? 'local',
     installedAt: lockEntry?.installedAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -811,9 +898,13 @@ function installMonorepo(
       for (const { name, entry } of eligiblePlugins) {
         if (commitHash) {
           upsertLockEntry(lock, name, {
-            source: cloneUrl,
+            source: {
+              kind: 'monorepo',
+              url: cloneUrl,
+              repoName,
+              subPath: entry.path,
+            },
             commitHash,
-            monorepo: { name: repoName, subPath: entry.path },
           });
         }
         installedNames.push(name);
@@ -843,7 +934,7 @@ function collectUpdatedMonorepoPlugins(
   }> = [];
 
   for (const [pluginName, entry] of Object.entries(lock)) {
-    if (entry.monorepo?.name !== monoName) continue;
+    if (entry.source.kind !== 'monorepo' || entry.source.repoName !== monoName) continue;
     const manifestEntry = manifest.plugins?.[pluginName];
     if (!manifestEntry || manifestEntry.disabled) {
       throw new Error(`Installed sub-plugin "${pluginName}" no longer exists in ${cloneUrl}`);
@@ -878,10 +969,14 @@ function updateMonorepoLockEntries(
     if (!commitHash) continue;
     upsertLockEntry(lock, plugin.name, {
       ...plugin.lockEntry,
-      source: cloneUrl,
+      source: {
+        kind: 'monorepo',
+        url: cloneUrl,
+        repoName: monoName,
+        subPath: plugin.manifestEntry.path,
+      },
       commitHash,
       updatedAt: new Date().toISOString(),
-      monorepo: { name: monoName, subPath: plugin.manifestEntry.path },
     });
   }
 }
@@ -896,7 +991,7 @@ function updateStandaloneLockEntry(
   if (!commitHash) return;
 
   upsertLockEntry(lock, name, {
-    source: cloneUrl,
+    source: { kind: 'git', url: cloneUrl },
     commitHash,
     installedAt: existing?.installedAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -928,11 +1023,11 @@ export function uninstallPlugin(name: string): void {
   }
 
   // Clean up monorepo directory if no more sub-plugins reference it
-  if (lockEntry?.monorepo) {
+  if (lockEntry?.source.kind === 'monorepo') {
     delete lock[name];
-    const monoName = lockEntry.monorepo.name;
+    const monoName = lockEntry.source.repoName;
     const stillReferenced = Object.values(lock).some(
-      (entry) => entry.monorepo?.name === monoName,
+      (entry) => entry.source.kind === 'monorepo' && entry.source.repoName === monoName,
     );
     if (!stillReferenced) {
       const monoDir = path.join(getMonoreposDir(), monoName);
@@ -1089,8 +1184,8 @@ export function listPlugins(): PluginInfo[] {
     // For monorepo sub-plugins, also check the monorepo root manifest
     let description = manifest?.description;
     let version = manifest?.version;
-    if (lockEntry?.monorepo && !description) {
-      const monoDir = path.join(getMonoreposDir(), lockEntry.monorepo.name);
+    if (lockEntry?.source.kind === 'monorepo' && !description) {
+      const monoDir = path.join(getMonoreposDir(), lockEntry.source.repoName);
       const monoManifest = readPluginManifest(monoDir);
       const subEntry = monoManifest?.plugins?.[entry.name];
       if (subEntry) {
@@ -1108,7 +1203,7 @@ export function listPlugins(): PluginInfo[] {
       source,
       version: version ?? lockEntry?.commitHash?.slice(0, 7),
       installedAt: lockEntry?.installedAt,
-      monorepoName: lockEntry?.monorepo?.name,
+      monorepoName: lockEntry?.source.kind === 'monorepo' ? lockEntry.source.repoName : undefined,
       description,
     });
   }

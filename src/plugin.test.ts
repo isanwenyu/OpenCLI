@@ -261,12 +261,12 @@ describe('lock file', () => {
   it('round-trips lock entries', () => {
     const entries: Record<string, LockEntry> = {
       'test-plugin': {
-        source: 'https://github.com/user/repo.git',
+        source: { kind: 'git', url: 'https://github.com/user/repo.git' },
         commitHash: 'abc1234567890def',
         installedAt: '2025-01-01T00:00:00.000Z',
       },
       'another-plugin': {
-        source: 'https://github.com/user/another.git',
+        source: { kind: 'git', url: 'https://github.com/user/another.git' },
         commitHash: 'def4567890123abc',
         installedAt: '2025-02-01T00:00:00.000Z',
         updatedAt: '2025-03-01T00:00:00.000Z',
@@ -281,6 +281,41 @@ describe('lock file', () => {
     fs.mkdirSync(path.dirname(getLockFilePath()), { recursive: true });
     fs.writeFileSync(getLockFilePath(), 'not valid json');
     expect(_readLockFile()).toEqual({});
+  });
+
+  it('migrates legacy string sources to structured sources on read', () => {
+    fs.mkdirSync(path.dirname(getLockFilePath()), { recursive: true });
+    fs.writeFileSync(getLockFilePath(), JSON.stringify({
+      alpha: {
+        source: 'https://github.com/user/opencli-plugins.git',
+        commitHash: 'abc1234567890def',
+        installedAt: '2025-01-01T00:00:00.000Z',
+        monorepo: { name: 'opencli-plugins', subPath: 'packages/alpha' },
+      },
+      beta: {
+        source: 'local:/tmp/plugin',
+        commitHash: 'local',
+        installedAt: '2025-01-01T00:00:00.000Z',
+      },
+    }, null, 2));
+
+    expect(_readLockFile()).toEqual({
+      alpha: {
+        source: {
+          kind: 'monorepo',
+          url: 'https://github.com/user/opencli-plugins.git',
+          repoName: 'opencli-plugins',
+          subPath: 'packages/alpha',
+        },
+        commitHash: 'abc1234567890def',
+        installedAt: '2025-01-01T00:00:00.000Z',
+      },
+      beta: {
+        source: { kind: 'local', path: '/tmp/plugin' },
+        commitHash: 'local',
+        installedAt: '2025-01-01T00:00:00.000Z',
+      },
+    });
   });
 });
 
@@ -329,7 +364,7 @@ describe('listPlugins', () => {
 
     const lock = _readLockFile();
     lock['__test-list-plugin__'] = {
-      source: 'https://github.com/user/repo.git',
+      source: { kind: 'git', url: 'https://github.com/user/repo.git' },
       commitHash: 'abcdef1234567890abcdef1234567890abcdef12',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
@@ -356,11 +391,13 @@ describe('listPlugins', () => {
 
     fs.mkdirSync(PLUGINS_DIR, { recursive: true });
     fs.writeFileSync(path.join(localTarget, 'hello.yaml'), 'site: test\nname: hello\n');
+    try { fs.unlinkSync(linkPath); } catch {}
+    try { fs.rmSync(linkPath, { recursive: true, force: true }); } catch {}
     fs.symlinkSync(localTarget, linkPath, 'dir');
 
     const lock = _readLockFile();
     lock['__test-list-plugin__'] = {
-      source: `local:${localTarget}`,
+      source: { kind: 'local', path: localTarget },
       commitHash: 'local',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
@@ -398,7 +435,7 @@ describe('uninstallPlugin', () => {
 
     const lock = _readLockFile();
     lock['__test-uninstall__'] = {
-      source: 'https://github.com/user/repo.git',
+      source: { kind: 'git', url: 'https://github.com/user/repo.git' },
       commitHash: 'abc123',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
@@ -428,7 +465,7 @@ describe('updatePlugin', () => {
 
     const lock = _readLockFile();
     lock['__test-local-update__'] = {
-      source: `local:${localTarget}`,
+      source: { kind: 'local', path: localTarget },
       commitHash: 'local',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
@@ -447,7 +484,7 @@ describe('updatePlugin', () => {
     ).toBe(false);
 
     const updated = _readLockFile()['__test-local-update__'];
-    expect(updated?.source).toBe(`local:${localTarget}`);
+    expect(updated?.source).toEqual({ kind: 'local', path: path.resolve(localTarget) });
     expect(updated?.updatedAt).toBeDefined();
 
     try { fs.unlinkSync(linkPath); } catch {}
@@ -544,17 +581,17 @@ describe('updateAllPlugins', () => {
 
     const lock = _readLockFile();
     lock['plugin-a'] = {
-      source: 'https://github.com/user/plugin-a.git',
+      source: { kind: 'git', url: 'https://github.com/user/plugin-a.git' },
       commitHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
     lock['plugin-b'] = {
-      source: 'https://github.com/user/plugin-b.git',
+      source: { kind: 'git', url: 'https://github.com/user/plugin-b.git' },
       commitHash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
     lock['plugin-c'] = {
-      source: 'https://github.com/user/plugin-c.git',
+      source: { kind: 'git', url: 'https://github.com/user/plugin-c.git' },
       commitHash: 'cccccccccccccccccccccccccccccccccccccccc',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
@@ -691,10 +728,14 @@ describe('monorepo uninstall with symlink', () => {
 
     const lock = _readLockFile();
     lock['__test-mono-sub__'] = {
-      source: 'https://github.com/user/test.git',
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/test.git',
+        repoName: '__test-mono__',
+        subPath: 'packages/sub',
+      },
       commitHash: 'abc123',
       installedAt: '2025-01-01T00:00:00.000Z',
-      monorepo: { name: '__test-mono__', subPath: 'packages/sub' },
     };
     _writeLockFile(lock);
   });
@@ -711,10 +752,14 @@ describe('monorepo uninstall with symlink', () => {
   it('removes symlink but keeps monorepo if other sub-plugins reference it', () => {
     const lock = _readLockFile();
     lock['__test-mono-other__'] = {
-      source: 'https://github.com/user/test.git',
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/test.git',
+        repoName: '__test-mono__',
+        subPath: 'packages/other',
+      },
       commitHash: 'abc123',
       installedAt: '2025-01-01T00:00:00.000Z',
-      monorepo: { name: '__test-mono__', subPath: 'packages/other' },
     };
     _writeLockFile(lock);
 
@@ -753,10 +798,14 @@ describe('listPlugins with monorepo metadata', () => {
 
     const lock = _readLockFile();
     lock['__test-mono-list__'] = {
-      source: 'https://github.com/user/test-mono.git',
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/test-mono.git',
+        repoName: 'test-mono',
+        subPath: 'packages/list',
+      },
       commitHash: 'def456def456def456def456def456def456def4',
       installedAt: '2025-01-01T00:00:00.000Z',
-      monorepo: { name: 'test-mono', subPath: 'packages/list' },
     };
     _writeLockFile(lock);
   });
@@ -809,7 +858,7 @@ describe('installLocalPlugin', () => {
     _installLocalPlugin(tmpDir, pluginName);
     const lock = _readLockFile();
     expect(lock[pluginName]).toBeDefined();
-    expect(lock[pluginName].source).toMatch(/^local:/);
+    expect(lock[pluginName].source).toEqual({ kind: 'local', path: path.resolve(tmpDir) });
   });
 
   it('lists the recorded local source', () => {
@@ -847,20 +896,24 @@ describe('plugin source helpers', () => {
   it('prefers lockfile source over git remote lookup', () => {
     const dir = path.join(os.tmpdir(), 'opencli-plugin-source');
     const source = _resolveStoredPluginSource({
-      source: 'local:/tmp/plugin',
+      source: { kind: 'local', path: '/tmp/plugin' },
       commitHash: 'local',
       installedAt: '2025-01-01T00:00:00.000Z',
     }, dir);
     expect(source).toBe('local:/tmp/plugin');
   });
 
-  it('normalizes monorepo lock entries into structured sources', () => {
+  it('returns structured monorepo sources unchanged', () => {
     const dir = path.join(os.tmpdir(), 'opencli-plugin-source');
     const source = _resolvePluginSource({
-      source: 'https://github.com/user/opencli-plugins.git',
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/opencli-plugins.git',
+        repoName: 'opencli-plugins',
+        subPath: 'packages/alpha',
+      },
       commitHash: 'abcdef1234567890abcdef1234567890abcdef12',
       installedAt: '2025-01-01T00:00:00.000Z',
-      monorepo: { name: 'opencli-plugins', subPath: 'packages/alpha' },
     }, dir);
     expect(source).toEqual({
       kind: 'monorepo',
@@ -1091,7 +1144,7 @@ describe('installPlugin with existing monorepo', () => {
       ([cmd, args]) => cmd === 'npm' && Array.isArray(args) && args[0] === 'install',
     );
     expect(npmCalls.some(([, , opts]) => opts?.cwd === repoDir)).toBe(true);
-    expect(fs.realpathSync(pluginLink)).toBe(subDir);
+    expect(fs.realpathSync(pluginLink)).toBe(fs.realpathSync(subDir));
   });
 });
 
@@ -1126,7 +1179,10 @@ describe('updatePlugin transactional staging', () => {
 
     const lock = _readLockFile();
     lock[standaloneName] = {
-      source: 'https://github.com/user/opencli-plugin-__test-transactional-update__.git',
+      source: {
+        kind: 'git',
+        url: 'https://github.com/user/opencli-plugin-__test-transactional-update__.git',
+      },
       commitHash: 'oldhasholdhasholdhasholdhasholdhasholdh',
       installedAt: '2025-01-01T00:00:00.000Z',
     };
@@ -1164,10 +1220,14 @@ describe('updatePlugin transactional staging', () => {
 
     const lock = _readLockFile();
     lock[monorepoPluginName] = {
-      source: 'https://github.com/user/opencli-plugins-__test-transactional-mono-update__.git',
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/opencli-plugins-__test-transactional-mono-update__.git',
+        repoName: monorepoName,
+        subPath: `packages/${monorepoPluginName}`,
+      },
       commitHash: 'oldmonooldmonooldmonooldmonooldmonoold',
       installedAt: '2025-01-01T00:00:00.000Z',
-      monorepo: { name: monorepoName, subPath: `packages/${monorepoPluginName}` },
     };
     _writeLockFile(lock);
 
@@ -1213,10 +1273,14 @@ describe('updatePlugin transactional staging', () => {
 
     const lock = _readLockFile();
     lock[monorepoPluginName] = {
-      source: 'https://github.com/user/opencli-plugins-__test-transactional-mono-update__.git',
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/opencli-plugins-__test-transactional-mono-update__.git',
+        repoName: monorepoName,
+        subPath: 'packages/old-alpha',
+      },
       commitHash: 'oldmonooldmonooldmonooldmonooldmonoold',
       installedAt: '2025-01-01T00:00:00.000Z',
-      monorepo: { name: monorepoName, subPath: 'packages/old-alpha' },
     };
     _writeLockFile(lock);
 
@@ -1242,8 +1306,11 @@ describe('updatePlugin transactional staging', () => {
     updatePlugin(monorepoPluginName);
 
     const expectedTarget = path.join(monorepoRepoDir, 'packages', 'moved-alpha');
-    expect(fs.realpathSync(monorepoLink)).toBe(expectedTarget);
-    expect(_readLockFile()[monorepoPluginName]?.monorepo?.subPath).toBe('packages/moved-alpha');
+    expect(fs.realpathSync(monorepoLink)).toBe(fs.realpathSync(expectedTarget));
+    expect(_readLockFile()[monorepoPluginName]?.source).toMatchObject({
+      kind: 'monorepo',
+      subPath: 'packages/moved-alpha',
+    });
   });
 
   it('rolls back the monorepo repo swap when relinking fails', () => {
@@ -1255,10 +1322,14 @@ describe('updatePlugin transactional staging', () => {
 
     const lock = _readLockFile();
     lock[monorepoPluginName] = {
-      source: 'https://github.com/user/opencli-plugins-__test-transactional-mono-update__.git',
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/opencli-plugins-__test-transactional-mono-update__.git',
+        repoName: monorepoName,
+        subPath: 'packages/old-alpha',
+      },
       commitHash: 'oldmonooldmonooldmonooldmonooldmonoold',
       installedAt: '2025-01-01T00:00:00.000Z',
-      monorepo: { name: monorepoName, subPath: 'packages/old-alpha' },
     };
     _writeLockFile(lock);
 
@@ -1285,6 +1356,9 @@ describe('updatePlugin transactional staging', () => {
     expect(fs.existsSync(path.join(monorepoRepoDir, 'packages', 'old-alpha', 'old.yaml'))).toBe(true);
     expect(fs.existsSync(path.join(monorepoRepoDir, 'packages', 'moved-alpha'))).toBe(false);
     expect(fs.readFileSync(path.join(monorepoLink, 'blocker.txt'), 'utf-8')).toBe('not a symlink');
-    expect(_readLockFile()[monorepoPluginName]?.monorepo?.subPath).toBe('packages/old-alpha');
+    expect(_readLockFile()[monorepoPluginName]?.source).toMatchObject({
+      kind: 'monorepo',
+      subPath: 'packages/old-alpha',
+    });
   });
 });

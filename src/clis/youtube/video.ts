@@ -2,7 +2,7 @@
  * YouTube video metadata — fetch watch HTML and parse bootstrap data without opening the watch UI.
  */
 import { cli, Strategy } from '../../registry.js';
-import { parseVideoId, prepareYoutubeApiPage } from './utils.js';
+import { extractJsonAssignmentFromHtml, parseVideoId, prepareYoutubeApiPage } from './utils.js';
 import { CommandExecutionError } from '../../errors.js';
 
 cli({
@@ -21,61 +21,7 @@ cli({
 
     const data = await page.evaluate(`
       (async () => {
-        function extractJsonAssignment(html, keys) {
-          const candidates = Array.isArray(keys) ? keys : [keys];
-          for (const key of candidates) {
-            const markers = [
-              'var ' + key + ' = ',
-              'window["' + key + '"] = ',
-              'window.' + key + ' = ',
-              key + ' = ',
-            ];
-            for (const marker of markers) {
-              const markerIndex = html.indexOf(marker);
-              if (markerIndex === -1) continue;
-
-              const jsonStart = html.indexOf('{', markerIndex + marker.length);
-              if (jsonStart === -1) continue;
-
-              let depth = 0;
-              let inString = false;
-              let escaping = false;
-              for (let i = jsonStart; i < html.length; i++) {
-                const ch = html[i];
-                if (inString) {
-                  if (escaping) {
-                    escaping = false;
-                  } else if (ch === '\\\\') {
-                    escaping = true;
-                  } else if (ch === '"') {
-                    inString = false;
-                  }
-                  continue;
-                }
-
-                if (ch === '"') {
-                  inString = true;
-                  continue;
-                }
-                if (ch === '{') {
-                  depth += 1;
-                  continue;
-                }
-                if (ch === '}') {
-                  depth -= 1;
-                  if (depth === 0) {
-                    try {
-                      return JSON.parse(html.slice(jsonStart, i + 1));
-                    } catch {
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-          }
-          return null;
-        }
+        const extractJsonAssignmentFromHtml = ${extractJsonAssignmentFromHtml.toString()};
 
         const watchResp = await fetch('/watch?v=' + encodeURIComponent(${JSON.stringify(videoId)}), {
           credentials: 'include',
@@ -83,8 +29,8 @@ cli({
         if (!watchResp.ok) return { error: 'Watch HTML returned HTTP ' + watchResp.status };
 
         const html = await watchResp.text();
-        const player = extractJsonAssignment(html, 'ytInitialPlayerResponse');
-        const yt = extractJsonAssignment(html, 'ytInitialData');
+        const player = extractJsonAssignmentFromHtml(html, 'ytInitialPlayerResponse');
+        const yt = extractJsonAssignmentFromHtml(html, 'ytInitialData');
         if (!player) return { error: 'ytInitialPlayerResponse not found in watch HTML' };
 
         const details = player.videoDetails || {};

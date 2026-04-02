@@ -50,6 +50,7 @@ Run `opencli list` for the live registry.
 | **[36kr](./browser/36kr)** | `news` `hot` `search` `article` | 🌐 / 🔐 |
 | **[producthunt](./browser/producthunt)** | `posts` `today` `hot` `browse` | 🌐 / 🔐 |
 | **[ones](./browser/ones)** | `login` `me` `token-info` `tasks` `my-tasks` `task` `worklog` `logout` | 🔐 Browser Bridge + `ONES_BASE_URL` |
+| **[xianyu](./browser/xianyu)** | `search` `item` `chat` | 🔐 Browser |
 
 ## Public API Adapters
 

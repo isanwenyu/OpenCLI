@@ -100,12 +100,13 @@ cli({
   description: '搜索闲鱼商品',
   domain: 'www.goofish.com',
   strategy: Strategy.COOKIE,
+  navigateBefore: false,
   browser: true,
   args: [
     { name: 'query', required: true, positional: true, help: 'Search keyword' },
     { name: 'limit', type: 'int', default: 20, help: 'Number of results to return' },
   ],
-  columns: ['rank', 'title', 'price', 'condition', 'brand', 'location', 'badge'],
+  columns: ['item_id', 'rank', 'title', 'price', 'condition', 'brand', 'location', 'badge', 'url'],
   func: async (page, kwargs) => {
     const query = String(kwargs.query || '').trim();
     const limit = normalizeLimit(kwargs.limit);

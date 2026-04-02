@@ -9,12 +9,12 @@ describe('xianyu chat helpers', () => {
   });
 
   it('normalizes numeric ids', () => {
-    expect(__test__.normalizeId('1038951278192', 'item_id')).toBe('1038951278192');
-    expect(__test__.normalizeId(3650092411, 'user_id')).toBe('3650092411');
+    expect(__test__.normalizeNumericId('1038951278192', 'item_id', '1038951278192')).toBe('1038951278192');
+    expect(__test__.normalizeNumericId(3650092411, 'user_id', '3650092411')).toBe('3650092411');
   });
 
   it('rejects non-numeric ids', () => {
-    expect(() => __test__.normalizeId('abc', 'item_id')).toThrow();
-    expect(() => __test__.normalizeId('3650092411x', 'user_id')).toThrow();
+    expect(() => __test__.normalizeNumericId('abc', 'item_id', '1038951278192')).toThrow();
+    expect(() => __test__.normalizeNumericId('3650092411x', 'user_id', '3650092411')).toThrow();
   });
 });

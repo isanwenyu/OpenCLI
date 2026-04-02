@@ -1,13 +1,6 @@
 import { AuthRequiredError, SelectorError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
-
-function normalizeId(value: unknown, label: string): string {
-  const normalized = String(value || '').trim();
-  if (!/^\d+$/.test(normalized)) {
-    throw new SelectorError(label, `${label} 必须是纯数字 ID`);
-  }
-  return normalized;
-}
+import { normalizeNumericId } from './utils.js';
 
 function buildChatUrl(itemId: string, peerUserId: string): string {
   return `https://www.goofish.com/im?itemId=${encodeURIComponent(itemId)}&peerUserId=${encodeURIComponent(peerUserId)}`;
@@ -26,6 +19,12 @@ function buildExtractChatStateEvaluate(): string {
       const topbar = document.querySelector('[class*="message-topbar"]');
       const itemCard = Array.from(document.querySelectorAll('a[href*="/item?id="]'))
         .find((el) => el.closest('main'));
+      const itemTitleNode =
+        document.querySelector('[class*="container"] [class*="title"]')
+        || document.querySelector('[class*="item-main-info"] [class*="desc"]')
+        || document.querySelector('[class*="headSkuInfo"]')
+        || itemCard?.querySelector('[class*="title"]')
+        || itemCard?.previousElementSibling?.querySelector?.('[class*="title"]');
 
       const messageRoot = document.querySelector('#message-list-scrollable');
       const visibleMessages = Array.from(
@@ -34,7 +33,6 @@ function buildExtractChatStateEvaluate(): string {
         .filter(Boolean)
         .filter((text) => !['发送', '闲鱼号', '立即购买'].includes(text))
         .filter((text) => !/^消息\\d*\\+?$/.test(text))
-        .filter((text, index, arr) => arr.indexOf(text) === index)
         .slice(-20);
 
       return {
@@ -42,7 +40,7 @@ function buildExtractChatStateEvaluate(): string {
         title: clean(document.title || ''),
         peer_name: clean(topbar?.querySelector('[class*="text1"]')?.textContent || ''),
         peer_masked_id: clean(topbar?.querySelector('[class*="text2"]')?.textContent || '').replace(/^\\(|\\)$/g, ''),
-        item_title: '',
+        item_title: clean(itemTitleNode?.textContent || ''),
         item_url: itemCard?.href || '',
         price: clean(itemCard?.querySelector('[class*="money"]')?.textContent || ''),
         location: clean(itemCard?.querySelector('[class*="delivery"] + [class*="delivery"], [class*="delivery"]:last-child')?.textContent || ''),
@@ -91,6 +89,7 @@ cli({
   description: '打开闲鱼聊一聊会话，并可选发送消息',
   domain: 'www.goofish.com',
   strategy: Strategy.COOKIE,
+  navigateBefore: false,
   browser: true,
   args: [
     { name: 'item_id', required: true, positional: true, help: '闲鱼商品 item_id' },
@@ -99,8 +98,8 @@ cli({
   ],
   columns: ['status', 'peer_name', 'item_title', 'price', 'location', 'message'],
   func: async (page, kwargs) => {
-    const itemId = normalizeId(kwargs.item_id, 'item_id');
-    const userId = normalizeId(kwargs.user_id, 'user_id');
+    const itemId = normalizeNumericId(kwargs.item_id, 'item_id', '1038951278192');
+    const userId = normalizeNumericId(kwargs.user_id, 'user_id', '3650092411');
     const url = buildChatUrl(itemId, userId);
     const text = String(kwargs.text || '').trim();
 
@@ -171,6 +170,6 @@ cli({
 });
 
 export const __test__ = {
-  normalizeId,
+  normalizeNumericId,
   buildChatUrl,
 };

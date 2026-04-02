@@ -3,8 +3,8 @@ import { __test__ } from './item.js';
 
 describe('xianyu item helpers', () => {
   it('normalizes numeric item ids', () => {
-    expect(__test__.normalizeItemId('1040754408976')).toBe('1040754408976');
-    expect(__test__.normalizeItemId(1040754408976)).toBe('1040754408976');
+    expect(__test__.normalizeNumericId('1040754408976', 'item_id', '1040754408976')).toBe('1040754408976');
+    expect(__test__.normalizeNumericId(1040754408976, 'item_id', '1040754408976')).toBe('1040754408976');
   });
 
   it('builds item urls', () => {
@@ -14,6 +14,6 @@ describe('xianyu item helpers', () => {
   });
 
   it('rejects invalid item ids', () => {
-    expect(() => __test__.normalizeItemId('abc')).toThrow();
+    expect(() => __test__.normalizeNumericId('abc', 'item_id', '1040754408976')).toThrow();
   });
 });

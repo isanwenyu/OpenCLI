@@ -1,13 +1,6 @@
 import { AuthRequiredError, EmptyResultError, SelectorError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
-
-function normalizeItemId(value: unknown): string {
-  const normalized = String(value || '').trim();
-  if (!/^\d+$/.test(normalized)) {
-    throw new SelectorError('item_id', 'item_id 必须是纯数字 ID');
-  }
-  return normalized;
-}
+import { normalizeNumericId } from './utils.js';
 
 function buildItemUrl(itemId: string): string {
   return `https://www.goofish.com/item?id=${encodeURIComponent(itemId)}`;
@@ -17,22 +10,55 @@ function buildFetchItemEvaluate(itemId: string): string {
   return `
     (async () => {
       const clean = (value) => String(value ?? '').replace(/\\s+/g, ' ').trim();
+      const extractRetCode = (ret) => {
+        const first = Array.isArray(ret) ? ret[0] : '';
+        return clean(first).split('::')[0] || '';
+      };
 
+      const waitFor = async (predicate, timeoutMs = 5000) => {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+          if (predicate()) return true;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        return false;
+      };
+
+      await waitFor(() => window.lib?.mtop?.request);
       if (!window.lib || !window.lib.mtop || typeof window.lib.mtop.request !== 'function') {
         return { error: 'mtop-not-ready' };
       }
 
-      const response = await window.lib.mtop.request({
-        api: 'mtop.taobao.idle.pc.detail',
-        data: { itemId: ${JSON.stringify(itemId)} },
-        type: 'POST',
-        v: '1.0',
-        dataType: 'json',
-        needLogin: false,
-        needLoginPC: false,
-        sessionOption: 'AutoLoginOnly',
-        ecode: 0,
-      });
+      let response;
+      try {
+        response = await window.lib.mtop.request({
+          api: 'mtop.taobao.idle.pc.detail',
+          data: { itemId: ${JSON.stringify(itemId)} },
+          type: 'POST',
+          v: '1.0',
+          dataType: 'json',
+          needLogin: false,
+          needLoginPC: false,
+          sessionOption: 'AutoLoginOnly',
+          ecode: 0,
+        });
+      } catch (error) {
+        const ret = error?.ret || [];
+        return {
+          error: 'mtop-request-failed',
+          error_code: extractRetCode(ret),
+          error_message: clean(Array.isArray(ret) ? ret.join(' | ') : error?.message || error),
+        };
+      }
+
+      const retCode = extractRetCode(response?.ret || []);
+      if (retCode && retCode !== 'SUCCESS') {
+        return {
+          error: 'mtop-response-error',
+          error_code: retCode,
+          error_message: clean((response?.ret || []).join(' | ')),
+        };
+      }
 
       const data = response?.data || {};
       const item = data.itemDO || {};
@@ -77,19 +103,22 @@ cli({
   description: '查看闲鱼商品详情',
   domain: 'www.goofish.com',
   strategy: Strategy.COOKIE,
+  navigateBefore: false,
   browser: true,
   args: [
     { name: 'item_id', required: true, positional: true, help: '闲鱼商品 item_id' },
   ],
   columns: ['item_id', 'title', 'price', 'condition', 'brand', 'location', 'seller_name', 'want_count'],
   func: async (page, kwargs) => {
-    const itemId = normalizeItemId(kwargs.item_id);
+    const itemId = normalizeNumericId(kwargs.item_id, 'item_id', '1040754408976');
 
     await page.goto(buildItemUrl(itemId));
     await page.wait(2);
 
     const result = await page.evaluate(buildFetchItemEvaluate(itemId)) as {
       error?: string;
+      error_code?: string;
+      error_message?: string;
       title?: string;
       item_id?: string;
     } & Record<string, unknown>;
@@ -102,9 +131,14 @@ cli({
       throw new EmptyResultError('xianyu item', '闲鱼商品详情接口未返回有效数据');
     }
 
-    const message = String((result as any).error || '');
-    if (/SESSION_EXPIRED|FAIL_SYS/.test(message)) {
+    const errorCode = String(result.error_code || '');
+    const errorMessage = String(result.error_message || '');
+    if (/FAIL_SYS_SESSION_EXPIRED|SESSION_EXPIRED|FAIL_SYS/.test(errorCode) || /FAIL_SYS_SESSION_EXPIRED|SESSION_EXPIRED/.test(errorMessage)) {
       throw new AuthRequiredError('www.goofish.com', 'Xianyu item detail requires a logged-in browser session');
+    }
+
+    if (result.error) {
+      throw new EmptyResultError('xianyu item', errorMessage || `Xianyu item detail request failed: ${result.error}`);
     }
 
     if (!String(result.title || '').trim()) {
@@ -116,6 +150,6 @@ cli({
 });
 
 export const __test__ = {
-  normalizeItemId,
+  normalizeNumericId,
   buildItemUrl,
 };

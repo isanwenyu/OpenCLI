@@ -15,6 +15,9 @@ cli({
   func: async (page, kwargs) => {
     const { id, limit = 5 } = kwargs;
     const questionId = String(id);
+    if (!/^\d+$/.test(questionId)) {
+      throw new CliError('INVALID_INPUT', 'Question ID must be numeric', 'Example: opencli zhihu question 123456789');
+    }
     const answerLimit = Number(limit);
 
     const stripHtml = (html: string) =>

@@ -20,18 +20,22 @@ cli({
     }
     const answerLimit = Number(limit);
 
-    const stripHtml = (html: string) =>
-      (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
-
     await page.goto(`https://www.zhihu.com/question/${questionId}`);
 
     const url = `https://www.zhihu.com/api/v4/questions/${questionId}/answers?limit=${answerLimit}&offset=0&sort_by=default&include=data[*].content,voteup_count,comment_count,author`;
     const result: any = await page.evaluate(`(async () => {
+      const strip = (html) => (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
       try {
         const r = await fetch(${JSON.stringify(url)}, { credentials: 'include' });
         if (!r.ok) return { ok: false, status: r.status };
         const a = await r.json();
-        return { ok: true, answers: Array.isArray(a?.data) ? a.data : [] };
+        const answers = (a?.data || []).map((item, i) => ({
+          rank: i + 1,
+          author: item.author?.name || 'anonymous',
+          votes: item.voteup_count || 0,
+          content: strip(item.content || '').substring(0, 200),
+        }));
+        return { ok: true, answers };
       } catch (e) {
         return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e) };
       }
@@ -49,13 +53,6 @@ cli({
       );
     }
 
-    const answers = result.answers.slice(0, answerLimit).map((a: any, i: number) => ({
-      rank: i + 1,
-      author: a.author?.name ?? 'anonymous',
-      votes: a.voteup_count ?? 0,
-      content: stripHtml(a.content ?? '').slice(0, 200),
-    }));
-
-    return answers;
+    return result.answers;
   },
 });

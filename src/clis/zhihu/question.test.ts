@@ -16,9 +16,10 @@ describe('zhihu question', () => {
         ok: true,
         answers: [
           {
-            author: { name: 'alice' },
-            voteup_count: 12,
-            content: '<p>Hello <b>Zhihu</b></p>',
+            rank: 1,
+            author: 'alice',
+            votes: 12,
+            content: 'Hello Zhihu',
           },
         ],
       };

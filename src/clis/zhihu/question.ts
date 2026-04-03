@@ -14,26 +14,36 @@ cli({
   columns: ['rank', 'author', 'votes', 'content'],
   func: async (page, kwargs) => {
     const { id, limit = 5 } = kwargs;
+    const questionId = String(id);
     const answerLimit = Number(limit);
 
     const stripHtml = (html: string) =>
       (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
 
+    await page.goto(`https://www.zhihu.com/question/${questionId}`);
+
     // Only fetch answers here. The question detail endpoint is not used by the
     // current CLI output and can fail independently, which would incorrectly
     // turn a successful answers response into a login error.
-    const result = await (page as any).evaluate(
-      async ({ questionId, answerLimit }: { questionId: string; answerLimit: number }) => {
+    const result = await (page as any).evaluate(`(async () => {
+      try {
         const aResp = await fetch(
-          `https://www.zhihu.com/api/v4/questions/${questionId}/answers?limit=${answerLimit}&offset=0&sort_by=default&include=data[*].content,voteup_count,comment_count,author`,
+          'https://www.zhihu.com/api/v4/questions/${questionId}/answers?limit=${answerLimit}&offset=0&sort_by=default&include=data[*].content,voteup_count,comment_count,author',
           { credentials: 'include' },
         );
-        if (!aResp.ok) return { ok: false as const, status: aResp.status };
+        if (!aResp.ok) {
+          return { ok: false, status: aResp.status, error: aResp.statusText || '' };
+        }
         const a = await aResp.json();
-        return { ok: true as const, answers: Array.isArray(a?.data) ? a.data : [] };
-      },
-      { questionId: String(id), answerLimit },
-    );
+        return { ok: true, answers: Array.isArray(a?.data) ? a.data : [] };
+      } catch (error) {
+        return {
+          ok: false,
+          status: 0,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    })()`);
 
     if (!result?.ok) {
       if (result?.status === 401 || result?.status === 403) {
@@ -41,7 +51,9 @@ cli({
       }
       throw new CliError(
         'FETCH_ERROR',
-        `Zhihu question answers request failed with HTTP ${result?.status ?? 'unknown'}`,
+        result?.status && result.status > 0
+          ? `Zhihu question answers request failed with HTTP ${result.status}${result?.error ? ` ${result.error}` : ''}`
+          : `Zhihu question answers request failed${result?.error ? `: ${result.error}` : ''}`,
         'Try again later or rerun with -v for more detail',
       );
     }

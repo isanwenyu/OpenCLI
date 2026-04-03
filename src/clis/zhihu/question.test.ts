@@ -8,8 +8,10 @@ describe('zhihu question', () => {
     const cmd = getRegistry().get('zhihu/question');
     expect(cmd?.func).toBeTypeOf('function');
 
-    const evaluate = vi.fn().mockImplementation(async (_fn: unknown, args: { questionId: string; answerLimit: number }) => {
-      expect(args).toEqual({ questionId: '2021881398772981878', answerLimit: 3 });
+    const goto = vi.fn().mockResolvedValue(undefined);
+    const evaluate = vi.fn().mockImplementation(async (js: string) => {
+      expect(js).toContain('questions/2021881398772981878/answers?limit=3');
+      expect(js).toContain("credentials: 'include'");
       return {
         ok: true,
         answers: [
@@ -23,6 +25,7 @@ describe('zhihu question', () => {
     });
 
     const page = {
+      goto,
       evaluate,
     } as any;
 
@@ -37,6 +40,7 @@ describe('zhihu question', () => {
       },
     ]);
 
+    expect(goto).toHaveBeenCalledWith('https://www.zhihu.com/question/2021881398772981878');
     expect(evaluate).toHaveBeenCalledTimes(1);
   });
 
@@ -45,6 +49,7 @@ describe('zhihu question', () => {
     expect(cmd?.func).toBeTypeOf('function');
 
     const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
       evaluate: vi.fn().mockResolvedValue({ ok: false, status: 403 }),
     } as any;
 
@@ -58,6 +63,7 @@ describe('zhihu question', () => {
     expect(cmd?.func).toBeTypeOf('function');
 
     const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
       evaluate: vi.fn().mockResolvedValue({ ok: false, status: 500 }),
     } as any;
 
@@ -67,5 +73,37 @@ describe('zhihu question', () => {
       code: 'FETCH_ERROR',
       message: 'Zhihu question answers request failed with HTTP 500',
     });
+  });
+
+  it('surfaces browser-side fetch exceptions instead of HTTP unknown', async () => {
+    const cmd = getRegistry().get('zhihu/question');
+    expect(cmd?.func).toBeTypeOf('function');
+
+    const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
+      evaluate: vi.fn().mockResolvedValue({ ok: false, status: 0, error: 'Failed to fetch' }),
+    } as any;
+
+    await expect(
+      cmd!.func!(page, { id: '2021881398772981878', limit: 3 }),
+    ).rejects.toMatchObject({
+      code: 'FETCH_ERROR',
+      message: 'Zhihu question answers request failed: Failed to fetch',
+    });
+  });
+
+  it('uses string-based evaluate compatible with the browser runtime', async () => {
+    const cmd = getRegistry().get('zhihu/question');
+    expect(cmd?.func).toBeTypeOf('function');
+
+    const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
+      evaluate: vi.fn().mockResolvedValue({ ok: true, answers: [] }),
+    } as any;
+
+    await cmd!.func!(page, { id: '2021881398772981878', limit: 1 });
+
+    expect(page.evaluate).toHaveBeenCalledWith(expect.any(String));
+    expect(page.evaluate).not.toHaveBeenCalledWith(expect.any(Function), expect.anything());
   });
 });

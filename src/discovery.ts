@@ -162,9 +162,11 @@ export async function ensureUserAdapters(): Promise<void> {
     // Dir doesn't exist — needs fetch
   }
 
-  log.info('First run detected — fetching adapters...');
+  log.info('First run detected — copying adapters (one-time setup)...');
   try {
     const { execFileSync } = await import('node:child_process');
+    // Two levels up: dist/src/ -> dist/ -> project root (only correct in prod/installed mode,
+    // dev mode has catch fallback to built-in adapters)
     const scriptPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'fetch-adapters.js');
     execFileSync(process.execPath, [scriptPath], {
       stdio: 'inherit',

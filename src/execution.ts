@@ -154,6 +154,7 @@ export async function executeCommand(
   await emitHook('onBeforeExecute', hookCtx);
 
   let result: unknown;
+  let diagnosticEmitted = false;
   try {
     if (shouldUseBrowserSession(cmd)) {
       const electron = isElectronApp(cmd.site);
@@ -216,6 +217,7 @@ export async function executeCommand(
             const internal = cmd as InternalCliCommand;
             const ctx = await collectDiagnostic(err, internal, page);
             emitDiagnostic(ctx);
+            diagnosticEmitted = true;
           }
           throw err;
         }
@@ -234,8 +236,9 @@ export async function executeCommand(
       }
     }
   } catch (err) {
-    // Emit diagnostic for non-browser commands (browser path emits inside the session).
-    if (isDiagnosticEnabled() && !shouldUseBrowserSession(cmd)) {
+    // Emit diagnostic if not already emitted (browser session emits with page state;
+    // this fallback covers non-browser commands and pre-session failures like BrowserConnectError).
+    if (isDiagnosticEnabled() && !diagnosticEmitted) {
       const internal = cmd as InternalCliCommand;
       const ctx = await collectDiagnostic(err, internal, null);
       emitDiagnostic(ctx);

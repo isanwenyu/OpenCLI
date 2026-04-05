@@ -1,6 +1,8 @@
+import { AuthRequiredError } from '@jackwener/opencli/errors';
 import { getRegistry } from '@jackwener/opencli/registry';
+import type { IPage } from '@jackwener/opencli/types';
 import fs from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { __test__ } from './topic-content.js';
 
 describe('linux-do topic-content', () => {
@@ -55,6 +57,20 @@ describe('linux-do topic-content', () => {
 
     expect(command?.defaultFormat).toBe('plain');
     expect(command?.columns).toEqual(['content']);
+  });
+
+  it('maps unauthenticated topic fetches to AuthRequiredError in the adapter test suite', async () => {
+    const command = getRegistry().get('linux-do/topic-content');
+    const page = {
+      evaluate: vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        data: null,
+        error: '',
+      }),
+    } as unknown as IPage;
+
+    await expect(command!.func!(page, { id: 1 })).rejects.toBeInstanceOf(AuthRequiredError);
   });
 
   it('keeps topic yaml as a summarized first-page reader after the split', () => {

@@ -2,8 +2,6 @@ import { AuthRequiredError, CommandExecutionError, EmptyResultError } from '@jac
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import type { IPage } from '@jackwener/opencli/types';
 import { htmlToMarkdown, isRecord } from '@jackwener/opencli/utils';
-import yaml from 'js-yaml';
-
 const LINUX_DO_DOMAIN = 'linux.do';
 const LINUX_DO_HOME = 'https://linux.do';
 
@@ -71,16 +69,25 @@ function buildTopicMarkdownDocument(params: {
   url: string;
   body: string;
 }): string {
-  const frontMatter = yaml.dump({
-    title: params.title || undefined,
-    author: params.author || undefined,
-    likes: typeof params.likes === 'number' && Number.isFinite(params.likes) ? params.likes : undefined,
-    createdAt: params.createdAt || undefined,
-    url: params.url || undefined,
-  }, {
-    lineWidth: -1,
-    noRefs: true,
-  }).trim();
+  const frontMatterLines: string[] = [];
+  const entries: [string, string | number | undefined][] = [
+    ['title', params.title || undefined],
+    ['author', params.author || undefined],
+    ['likes', typeof params.likes === 'number' && Number.isFinite(params.likes) ? params.likes : undefined],
+    ['createdAt', params.createdAt || undefined],
+    ['url', params.url || undefined],
+  ];
+  for (const [key, value] of entries) {
+    if (value === undefined) continue;
+    if (typeof value === 'number') {
+      frontMatterLines.push(`${key}: ${value}`);
+    } else {
+      // Quote strings that could be misinterpreted by YAML parsers
+      const needsQuote = /[:#{}[\],&*?|>!%@`'"]/.test(value) || value.includes('\n');
+      frontMatterLines.push(`${key}: ${needsQuote ? `'${value.replace(/'/g, "''")}'` : value}`);
+    }
+  }
+  const frontMatter = frontMatterLines.join('\n');
 
   return [
     frontMatter ? `---\n${frontMatter}\n---` : '',

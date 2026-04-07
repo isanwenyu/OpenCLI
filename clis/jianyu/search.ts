@@ -2,12 +2,17 @@
  * Jianyu search — browser DOM extraction from Jianyu bid search page.
  */
 import { cli, Strategy } from '@jackwener/opencli/registry';
-import { AuthRequiredError } from '@jackwener/opencli/errors';
+import { ArgumentError, AuthRequiredError } from '@jackwener/opencli/errors';
 
 interface JianyuCandidate {
   title: string;
   url: string;
   date: string;
+}
+
+interface JianyuSearchPayload {
+  rows: JianyuCandidate[];
+  authRequired: boolean;
 }
 
 const SEARCH_ENTRY = 'https://www.jianyu360.cn/jylab/supsearch/index.html';
@@ -60,6 +65,7 @@ cli({
   columns: ['rank', 'title', 'date', 'url'],
   func: async (page, kwargs) => {
     const query = cleanText(kwargs.query);
+    if (!query) throw new ArgumentError('Search keyword cannot be empty');
     const limit = Math.max(1, Math.min(Number(kwargs.limit) || 20, 50));
     const searchUrl = buildSearchUrl(query);
 
@@ -69,6 +75,7 @@ cli({
     const payload = await page.evaluate(`
       (() => {
         const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+        const authRequired = /(请先登录|登录后|未登录|验证码)/.test(clean(document.body?.innerText || ''));
         const toAbsolute = (href) => {
           if (!href) return '';
           if (href.startsWith('http://') || href.startsWith('https://')) return href;
@@ -112,23 +119,19 @@ cli({
             date: pickDateText(anchor),
           });
         }
-        return rows;
+        return { rows, authRequired };
       })()
-    `);
+    `) as JianyuSearchPayload | null;
 
-    const pageText = cleanText(await page.evaluate('document.body ? document.body.innerText : ""'));
-    if (
-      !Array.isArray(payload)
-      && /(请先登录|登录后|未登录|验证码)/.test(pageText)
-    ) {
+    if (payload?.authRequired) {
       throw new AuthRequiredError(
         'www.jianyu360.cn',
         'Jianyu search results require login or human verification',
       );
     }
 
-    const rows = Array.isArray(payload)
-      ? payload
+    const rows = Array.isArray(payload?.rows)
+      ? payload.rows
         .filter((item): item is JianyuCandidate => !!item && typeof item === 'object')
         .map((item) => ({
           title: cleanText(item.title),

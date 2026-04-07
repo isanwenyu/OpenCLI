@@ -3,8 +3,8 @@ import { __test__ } from './search.js';
 
 describe('jianyu search helpers', () => {
   it('builds supsearch URL with required query params', () => {
-    const url = __test__.buildSearchUrl('电梯');
-    expect(url).toContain('keywords=%E7%94%B5%E6%A2%AF');
+    const url = __test__.buildSearchUrl('procurement');
+    expect(url).toContain('keywords=procurement');
     expect(url).toContain('selectType=title');
     expect(url).toContain('searchGroup=1');
   });
@@ -24,4 +24,3 @@ describe('jianyu search helpers', () => {
     expect(deduped).toHaveLength(2);
   });
 });
-

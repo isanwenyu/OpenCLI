@@ -12,10 +12,10 @@
 
 ```bash
 # Search by keyword
-opencli jianyu search "电梯" --limit 20 -f json
+opencli jianyu search "procurement" --limit 20 -f json
 
 # Search another keyword with a smaller window
-opencli jianyu search "施工升降机" --limit 10 -f json
+opencli jianyu search "substation" --limit 10 -f json
 ```
 
 ## Prerequisites

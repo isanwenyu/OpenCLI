@@ -119,6 +119,9 @@ export function extractMetric(output: string): number | null {
   const lines = output.trim().split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i].trim();
+    // Match REGRESSIONS=N → N (for incident mode)
+    const regMatch = line.match(/REGRESSIONS[=:]\s*(\d+)/i);
+    if (regMatch) return parseFloat(regMatch[1]);
     // Match standalone numbers: "56", "95.2", "SCORE=56/59" → 56
     const scoreMatch = line.match(/SCORE[=:]\s*(\d+)/i);
     if (scoreMatch) return parseFloat(scoreMatch[1]);

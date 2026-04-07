@@ -90,13 +90,16 @@ function buildIncidentConfig(specName: string, maxIterations: number) {
     process.exit(1);
   }
 
+  // Use REGRESSIONS=N (direction: lower, goal: 0) instead of SCORE=X/Y.
+  // This ensures infra/precondition failures don't pollute the metric.
+  // grep for REGRESSIONS= to extract only the regression count line.
   return {
     config: {
       goal: `Fix command regression: ${spec.command}`,
       scope: [...spec.repairScope, 'src/**/*.ts'],
-      metric: 'pass_count',
-      direction: 'higher' as const,
-      verify: `npx tsx autoresearch/eval-cli.ts --spec ${specName} 2>&1 | tail -1`,
+      metric: 'regression_count',
+      direction: 'lower' as const,
+      verify: `npx tsx autoresearch/eval-cli.ts --spec ${specName} 2>&1 | grep "^REGRESSIONS=" | tail -1`,
       guard: 'npm run build && npm test',
       iterations: maxIterations,
       minDelta: 1,
@@ -118,7 +121,7 @@ function buildIncidentPrompt(specName: string, ctx: ModifyContext): string {
 
   return `Command \`${spec.command}\` is failing (regression).
 
-Current pass count: ${ctx.currentMetric}. Goal: all verify checks pass.
+Current regression count: ${ctx.currentMetric}. Goal: 0 regressions.
 
 The command implementation is at: ${spec.repairScope.join(', ')}
 Read the adapter code, understand why the command fails against the live site, and fix it.
@@ -149,6 +152,29 @@ async function main() {
 
     console.log(`\n🔧 AutoResearch Fix — Incident Mode: ${specName}\n`);
 
+    // Pre-flight: run eval-cli once to check if spec has actual regressions
+    const preflight = exec(`npx tsx autoresearch/eval-cli.ts --spec ${specName} 2>&1`);
+    const regressionsMatch = preflight.output.match(/REGRESSIONS=(\d+)/);
+    const regressionCount = regressionsMatch ? parseInt(regressionsMatch[1], 10) : 0;
+
+    if (regressionCount === 0) {
+      // Check if it's because of infra/precondition (exit code 2) or actually passing
+      if (preflight.output.includes('failed_infrastructure')) {
+        console.log('  ⚡ Cannot run: infrastructure failure (browser bridge not connected?)');
+        console.log('  Fix the infrastructure issue first, then retry.\n');
+        process.exit(1);
+      }
+      if (preflight.output.includes('failed_precondition')) {
+        console.log('  ⊘ Cannot run: prerequisite not met (auth/env missing?)');
+        console.log('  Ensure prerequisites are satisfied, then retry.\n');
+        process.exit(1);
+      }
+      console.log('  ✓ Spec already passing — nothing to fix!\n');
+      return;
+    }
+
+    console.log(`  Found: ${regressionCount} regression(s)`);
+
     const { config } = buildIncidentConfig(specName, maxIterations);
 
     console.log(`  Command spec: ${specName}`);
@@ -160,9 +186,10 @@ async function main() {
       modify: async (ctx: ModifyContext) => {
         const prompt = buildIncidentPrompt(specName, ctx);
         try {
+          // Pass prompt via stdin to avoid shell metacharacter expansion
           const result = execSync(
-            `claude -p --dangerously-skip-permissions --allowedTools "Bash(npm:*),Bash(npx:*),Read,Edit,Write,Glob,Grep" --output-format text --no-session-persistence "${prompt.replace(/"/g, '\\"')}"`,
-            { cwd: ROOT, timeout: 180_000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+            'claude -p --dangerously-skip-permissions --allowedTools "Bash(npm:*),Bash(npx:*),Read,Edit,Write,Glob,Grep" --output-format text --no-session-persistence',
+            { cwd: ROOT, timeout: 180_000, encoding: 'utf-8', input: prompt, stdio: ['pipe', 'pipe', 'pipe'] }
           ).trim();
           const lines = result.split('\n').filter(l => l.trim());
           return lines[lines.length - 1]?.trim()?.slice(0, 120) || 'incident fix attempt';

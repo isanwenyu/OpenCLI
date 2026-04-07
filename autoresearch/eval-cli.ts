@@ -352,8 +352,17 @@ function main() {
 
   console.log(`  Results saved: ${resultPath}\n`);
 
-  // Last line: SCORE=X/Y for engine metric extraction
+  // Output both formats for different consumers:
+  // SCORE=X/Y for general reporting (passed/scorable)
+  // REGRESSIONS=N for incident mode engine (metric: regression_count, direction: lower)
   console.log(`SCORE=${scoreNumerator}/${scoreDenominator}`);
+  console.log(`REGRESSIONS=${regressions}`);
+
+  // Exit with code 2 if no specs were scorable (all infra/precondition/skipped)
+  // This lets fix.ts distinguish "nothing to repair" from "regressions found"
+  if (scoreDenominator === 0 && results.length > 0) {
+    process.exit(2);
+  }
 }
 
 main();

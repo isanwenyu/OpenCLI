@@ -4,6 +4,8 @@ import type { IPage } from '@jackwener/opencli/types';
 import { assertAllowedKinds, parseTarget, type ZhihuTarget } from './target.js';
 import { buildResultRow, requireExecute, resolveCurrentUserIdentity, resolvePayload } from './write-shared.js';
 
+const ANSWER_AUTHOR_SCOPE_SELECTOR = '.AuthorInfo, .AnswerItem-authorInfo, .ContentItem-meta, [itemprop="author"]';
+
 cli({
   site: 'zhihu',
   name: 'answer',
@@ -32,6 +34,15 @@ cli({
 
     const entryPath = await page.evaluate(`(() => {
       const currentUserSlug = ${JSON.stringify(authorIdentity)};
+      const answerAuthorScopeSelector = ${JSON.stringify(ANSWER_AUTHOR_SCOPE_SELECTOR)};
+      const readAnswerAuthorSlug = (node) => {
+        const authorScopes = Array.from(node.querySelectorAll(answerAuthorScopeSelector));
+        const slugs = Array.from(new Set(authorScopes
+          .flatMap((scope) => Array.from(scope.querySelectorAll('a[href^="/people/"]')))
+          .map((link) => (link.getAttribute('href') || '').match(/^\\/people\\/([A-Za-z0-9_-]+)/)?.[1] || null)
+          .filter(Boolean)));
+        return slugs.length === 1 ? slugs[0] : null;
+      };
       const restoredDraft = !!document.querySelector('[contenteditable="true"][data-draft-restored], textarea[data-draft-restored]');
       const composerCandidates = Array.from(document.querySelectorAll('[contenteditable="true"], textarea')).map((editor) => {
         const container = editor.closest('form, .AnswerForm, .DraftEditor-root, [data-za-module*="Answer"]') || editor.parentElement;
@@ -41,9 +52,7 @@ cli({
         return { editor, container, text, submitButton, nestedComment };
       }).filter((candidate) => candidate.container && candidate.submitButton && !candidate.nestedComment);
       const hasExistingAnswerByCurrentUser = Array.from(document.querySelectorAll('[data-zop-question-answer], article')).some((node) => {
-        const authorLink = node.querySelector('a[href^="/people/"]');
-        const authorSlug = (authorLink?.getAttribute('href') || '').match(/^\\/people\\/([A-Za-z0-9_-]+)/)?.[1] || null;
-        return authorSlug === currentUserSlug;
+        return readAnswerAuthorSlug(node) === currentUserSlug;
       });
       return {
         entryPathSafe: composerCandidates.length === 1
@@ -132,6 +141,15 @@ cli({
 
     const proof = await page.evaluate(`(async () => {
       const normalize = (value) => value.replace(/\\s+/g, ' ').trim();
+      const answerAuthorScopeSelector = ${JSON.stringify(ANSWER_AUTHOR_SCOPE_SELECTOR)};
+      const readAnswerAuthorSlug = (node) => {
+        const authorScopes = Array.from(node.querySelectorAll(answerAuthorScopeSelector));
+        const slugs = Array.from(new Set(authorScopes
+          .flatMap((scope) => Array.from(scope.querySelectorAll('a[href^="/people/"]')))
+          .map((link) => (link.getAttribute('href') || '').match(/^\\/people\\/([A-Za-z0-9_-]+)/)?.[1] || null)
+          .filter(Boolean)));
+        return slugs.length === 1 ? slugs[0] : null;
+      };
       const composerCandidates = Array.from(document.querySelectorAll('[contenteditable="true"], textarea')).map((editor) => {
         const container = editor.closest('form, [role="dialog"], .AnswerForm, .DraftEditor-root, [data-za-module*="Answer"]') || editor.parentElement;
         const submitButton = Array.from((container || document).querySelectorAll('button')).find((node) => /发布|提交/.test(node.textContent || ''));
@@ -156,8 +174,7 @@ cli({
             });
           })
         : null;
-      const authorLink = answerContainer?.querySelector('a[href^="/people/"]');
-      const authorSlug = (authorLink?.getAttribute('href') || '').match(/^\\/people\\/([A-Za-z0-9_-]+)/)?.[1] || null;
+      const authorSlug = answerContainer ? readAnswerAuthorSlug(answerContainer) : null;
       const bodyNode =
         answerContainer?.querySelector('[itemprop="text"]')
         || answerContainer?.querySelector('.RichContent-inner')

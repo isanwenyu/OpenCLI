@@ -93,6 +93,11 @@ describe('zhihu answer', () => {
 
     expect(page.evaluate.mock.calls[1][0]).toContain('composerCandidates.length === 1');
     expect(page.evaluate.mock.calls[1][0]).not.toContain('writeAnswerButton');
+    expect(page.evaluate.mock.calls[1][0]).toContain('const readAnswerAuthorSlug = (node) =>');
+    expect(page.evaluate.mock.calls[1][0]).toContain('const answerAuthorScopeSelector = ".AuthorInfo, .AnswerItem-authorInfo, .ContentItem-meta, [itemprop=\\"author\\"]"');
+    expect(page.evaluate.mock.calls[1][0]).not.toContain("node.querySelector('a[href^=\"/people/\"]')");
     expect(page.evaluate.mock.calls[3][0]).toContain('composerCandidates.length !== 1');
+    expect(page.evaluate.mock.calls[4][0]).toContain('const readAnswerAuthorSlug = (node) =>');
+    expect(page.evaluate.mock.calls[4][0]).not.toContain("answerContainer?.querySelector('a[href^=\"/people/\"]')");
   });
 });

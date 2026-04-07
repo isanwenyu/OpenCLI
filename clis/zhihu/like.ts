@@ -31,12 +31,14 @@ cli({
 
       let btn = null;
       if (targetKind === 'answer') {
-        const links = Array.from(document.querySelectorAll('a[href*="/answer/"]'));
-        const matchedLink = links.find((node) => {
-          const href = node.getAttribute('href') || '';
-          return href.includes('/question/' + targetQuestionId + '/answer/' + targetAnswerId);
+        const block = Array.from(document.querySelectorAll('article, .AnswerItem, [data-zop-question-answer]')).find((node) => {
+          const dataAnswerId = node.getAttribute('data-answerid') || node.getAttribute('data-zop-question-answer') || '';
+          if (dataAnswerId && dataAnswerId.includes(targetAnswerId)) return true;
+          return Array.from(node.querySelectorAll('a[href*="/answer/"]')).some((link) => {
+            const href = link.getAttribute('href') || '';
+            return href.includes('/question/' + targetQuestionId + '/answer/' + targetAnswerId);
+          });
         });
-        const block = matchedLink && matchedLink.closest('article, .AnswerItem, [data-zop-question-answer]');
         if (!block) return { state: 'wrong_answer' };
         const candidates = Array.from(block?.querySelectorAll('button') || []).filter((node) => {
           const text = (node.textContent || '').trim();

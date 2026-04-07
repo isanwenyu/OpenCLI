@@ -45,6 +45,8 @@ describe('zhihu like', () => {
     expect(page.evaluate.mock.calls[0][0]).toContain('targetQuestionId');
     expect(page.evaluate.mock.calls[0][0]).toContain('"123"');
     expect(page.evaluate.mock.calls[0][0]).toContain('"456"');
+    expect(page.evaluate.mock.calls[0][0]).toContain("node.getAttribute('data-answerid')");
+    expect(page.evaluate.mock.calls[0][0]).toContain("node.getAttribute('data-zop-question-answer')");
   });
 
   it('rejects answer targets when the answer-level like control is not unique', async () => {

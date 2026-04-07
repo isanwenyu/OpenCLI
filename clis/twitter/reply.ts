@@ -7,6 +7,7 @@ import { cli, Strategy } from '@jackwener/opencli/registry';
 import type { IPage } from '@jackwener/opencli/types';
 
 const REPLY_FILE_INPUT_SELECTOR = 'input[type="file"][data-testid="fileInput"]';
+const REPLY_TEXTAREA_TIMEOUT_SECONDS = 15;
 const SUPPORTED_IMAGE_EXTENSIONS = new Set([
   '.jpg',
   '.jpeg',
@@ -271,7 +272,7 @@ cli({
       // reply box because the textarea and action button are mounted more
       // consistently there.
       await page.goto(buildReplyComposerUrl(kwargs.url), { waitUntil: 'load', settleMs: 2500 });
-      await page.wait({ selector: '[data-testid="tweetTextarea_0"]', timeout: 8 });
+      await page.wait({ selector: '[data-testid="tweetTextarea_0"]', timeout: REPLY_TEXTAREA_TIMEOUT_SECONDS });
       if (localImagePath) {
         await page.wait({ selector: REPLY_FILE_INPUT_SELECTOR, timeout: 20 });
         await attachReplyImage(page, localImagePath);

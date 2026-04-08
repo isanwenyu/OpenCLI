@@ -370,8 +370,18 @@ export function registerListeners(): void {
     if (!state) return;
 
     if (method === 'Network.requestWillBeSent') {
-      const requestId = String(params?.requestId || '');
-      const request = params?.request as {
+      const networkParams = params as {
+        requestId?: string;
+        request?: {
+          url?: string;
+          method?: string;
+          headers?: Record<string, unknown>;
+          postData?: string;
+          hasPostData?: boolean;
+        };
+      } | undefined;
+      const requestId = String(networkParams?.requestId || '');
+      const request = networkParams?.request as {
         url?: string;
         method?: string;
         headers?: Record<string, unknown>;
@@ -399,8 +409,17 @@ export function registerListeners(): void {
     }
 
     if (method === 'Network.responseReceived') {
-      const requestId = String(params?.requestId || '');
-      const response = params?.response as {
+      const networkParams = params as {
+        requestId?: string;
+        response?: {
+          url?: string;
+          mimeType?: string;
+          status?: number;
+          headers?: Record<string, unknown>;
+        };
+      } | undefined;
+      const requestId = String(networkParams?.requestId || '');
+      const response = networkParams?.response as {
         url?: string;
         mimeType?: string;
         status?: number;
@@ -417,7 +436,8 @@ export function registerListeners(): void {
     }
 
     if (method === 'Network.loadingFinished') {
-      const requestId = String(params?.requestId || '');
+      const networkParams = params as { requestId?: string } | undefined;
+      const requestId = String(networkParams?.requestId || '');
       const stateEntryIndex = state.requestToIndex.get(requestId);
       if (stateEntryIndex === undefined) return;
       const entry = state.entries[stateEntryIndex];

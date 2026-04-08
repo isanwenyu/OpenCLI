@@ -56,6 +56,20 @@ OpenCLI 通过轻量化的 **Browser Bridge** Chrome/Chromium 扩展 + 微型 da
 
 完成！运行任何 opencli 浏览器命令时，后台微型 daemon 会自动启动与浏览器通信。无需配 API Token，零代码配置。
 
+如果你需要自定义 daemon 的监听地址或端口，可以新建 `~/.opencli/daemon.yaml`：
+
+```yaml
+host: 127.0.0.1
+port: 19825
+```
+
+- `host`：daemon 监听地址
+- `port`：daemon 监听端口
+
+如果 `host` 配成 `0.0.0.0`，CLI 会自动回退用 `127.0.0.1` 连接。
+
+浏览器扩展弹窗里也可以单独设置它要连接的 daemon 地址和端口。
+
 > **Tip**：后续诊断和 daemon 管理：
 > ```bash
 > opencli doctor            # 检查扩展和 daemon 连通性
@@ -406,8 +420,8 @@ opencli cascade https://api.example.com/data
 - **Node API 错误 (如 parseArgs, fs 等)**
   - 确保 Node.js 版本 `>= 20`。
 - **Daemon 问题**
-  - 检查 daemon 状态：`curl localhost:19825/status`
-  - 查看扩展日志：`curl localhost:19825/logs`
+  - 检查 daemon 状态：`opencli daemon status`
+  - 查看扩展日志：`curl http://127.0.0.1:19825/logs`
 
 
 ## Star History

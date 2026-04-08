@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
 import type { CliCommand } from './registry.js';
-import { EmptyResultError, SelectorError } from './errors.js';
+import { BrowserConnectError, EmptyResultError, SelectorError } from './errors.js';
 
 const { mockExecuteCommand, mockRenderOutput } = vi.hoisted(() => ({
   mockExecuteCommand: vi.fn(),
@@ -309,6 +309,50 @@ describe('commanderAdapter empty result hints', () => {
     const output = errorSpy.mock.calls.flat().join('\n');
     expect(output).toContain('selector no longer matches');
     expect(output).not.toContain('this adapter may be outdated');
+
+    errorSpy.mockRestore();
+  });
+});
+
+describe('commanderAdapter browser connect errors', () => {
+  const cmd: CliCommand = {
+    site: 'twitter',
+    name: 'reply',
+    description: 'Reply to a tweet',
+    browser: true,
+    args: [
+      { name: 'url', positional: true, required: true, help: 'Tweet URL' },
+    ],
+    func: vi.fn(),
+  };
+
+  beforeEach(() => {
+    mockExecuteCommand.mockReset();
+    mockRenderOutput.mockReset();
+    delete process.env.OPENCLI_VERBOSE;
+    process.exitCode = undefined;
+  });
+
+  it('preserves detailed daemon startup guidance in browser connect errors', async () => {
+    const program = new Command();
+    const siteCmd = program.command('twitter');
+    registerCommandToProgram(siteCmd, cmd);
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockExecuteCommand.mockRejectedValueOnce(
+      new BrowserConnectError(
+        'Cannot connect to opencli daemon.\n\nFailed to start opencli daemon. Try running manually:\n  node /tmp/daemon.js\nMake sure port 19825 is available.',
+        'The daemon should auto-start. If it keeps failing, make sure port 19825 is available.',
+        'daemon-not-running',
+      ),
+    );
+
+    await program.parseAsync(['node', 'opencli', 'twitter', 'reply', 'https://x.com/jack/status/1']);
+
+    const output = errorSpy.mock.calls.flat().join('\n');
+    expect(output).toContain('Failed to start opencli daemon');
+    expect(output).toContain('node /tmp/daemon.js');
+    expect(output).toContain('Daemon');
 
     errorSpy.mockRestore();
   });

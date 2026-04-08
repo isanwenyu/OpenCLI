@@ -53,15 +53,32 @@ export async function checkConnectivity(opts?: { timeout?: number }): Promise<Co
 }
 
 export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<DoctorReport> {
+  let health;
+
   // Live connectivity test — bridge.connect() auto-starts the daemon if needed,
   // so we don't duplicate auto-start logic here.
   let connectivity: ConnectivityResult | undefined;
   if (opts.live) {
     connectivity = await checkConnectivity();
+    health = await getDaemonHealth();
+  } else {
+    // Without the live browser probe we still want to normalize the daemon's
+    // lazy lifecycle; an idle auto-exited daemon is not itself a user-facing bug.
+    const initialHealth = await getDaemonHealth();
+    if (initialHealth.state === 'stopped') {
+      try {
+        const bridge = new BrowserBridge();
+        await bridge.connect({ timeout: 5 });
+        await bridge.close();
+      } catch {
+        // If auto-start fails we report the final health snapshot below.
+      }
+      health = await getDaemonHealth();
+    } else {
+      health = initialHealth;
+    }
   }
 
-  // Single status check *after* any side-effects from the live test have settled.
-  const health = await getDaemonHealth();
   const running = health.state !== 'stopped';
   const extensionConnected = health.state === 'ready';
   const extensionVersion = health.status?.extensionVersion;

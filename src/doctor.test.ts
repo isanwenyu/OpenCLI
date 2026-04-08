@@ -84,16 +84,37 @@ describe('doctor report rendering', () => {
     expect(text).toContain('[SKIP] Connectivity: skipped (--no-live)');
   });
 
-  it('reports daemon not running when health check returns stopped', async () => {
-    // getDaemonHealth called once (no more double-check)
-    mockGetDaemonHealth.mockResolvedValueOnce({ state: 'stopped', status: null });
+  it('normalizes an idle daemon before reporting no-live status', async () => {
+    mockGetDaemonHealth
+      .mockResolvedValueOnce({ state: 'stopped', status: null })
+      .mockResolvedValueOnce({
+        state: 'ready',
+        status: { extensionConnected: true, extensionVersion: '1.6.2', pid: 123, uptime: 10, ok: true, pending: 0, lastCliRequestTime: Date.now(), memoryMB: 16, port: 19825 },
+      });
+    mockConnect.mockResolvedValueOnce({ evaluate: vi.fn().mockResolvedValue(2) });
 
     const report = await runBrowserDoctor({ live: false });
 
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(mockGetDaemonHealth).toHaveBeenCalledTimes(2);
+    expect(report.daemonRunning).toBe(true);
+    expect(report.extensionConnected).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it('reports daemon not running when auto-start still fails in no-live mode', async () => {
+    mockGetDaemonHealth
+      .mockResolvedValueOnce({ state: 'stopped', status: null })
+      .mockResolvedValueOnce({ state: 'stopped', status: null });
+    mockConnect.mockRejectedValueOnce(new Error('Could not start daemon'));
+
+    const report = await runBrowserDoctor({ live: false });
+
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockGetDaemonHealth).toHaveBeenCalledTimes(2);
     expect(report.daemonRunning).toBe(false);
     expect(report.extensionConnected).toBe(false);
-    // Only one getDaemonHealth call — no more double status check
-    expect(mockGetDaemonHealth).toHaveBeenCalledTimes(1);
     expect(report.issues).toEqual(expect.arrayContaining([
       expect.stringContaining('Daemon is not running'),
     ]));

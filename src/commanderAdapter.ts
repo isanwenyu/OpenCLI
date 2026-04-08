@@ -194,7 +194,7 @@ function renderBridgeStatus(running: boolean, extensionConnected: boolean): void
 async function renderError(err: unknown, cmdName: string, verbose: boolean): Promise<void> {
   // ── BrowserConnectError: use typed kind for diagnosis ─────────────────
   if (err instanceof BrowserConnectError) {
-    console.error(chalk.red('🔌 Browser Bridge not connected'));
+    console.error(chalk.red(`🔌 ${err.message}`));
     console.error();
     // Bridge now throws typed errors with accurate `kind` — no need for
     // a separate real-time status check that could itself fail or race.

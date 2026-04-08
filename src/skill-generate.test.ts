@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mapOutcomeToSkillOutput, type SkillOutput } from './skill-generate.js';
 import type { GenerateOutcome } from './generate-verified.js';
+import { Strategy } from './registry.js';
 
 describe('mapOutcomeToSkillOutput', () => {
   const baseStats = {
@@ -20,7 +21,7 @@ describe('mapOutcomeToSkillOutput', () => {
         site: 'demo',
         name: 'hot',
         command: 'demo/hot',
-        strategy: 'public',
+        strategy: Strategy.PUBLIC,
         path: '/tmp/demo/hot.yaml',
         metadata_path: '/tmp/demo/hot.meta.json',
         reusability: 'verified-artifact',

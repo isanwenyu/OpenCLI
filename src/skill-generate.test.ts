@@ -123,7 +123,7 @@ describe('mapOutcomeToSkillOutput', () => {
     expect(result.suggested_action).toBe('ask-for-sample-arg');
     expect(result.reusability).toBe('unverified-candidate');
     expect(result.path).toBe('/tmp/demo/detail.yaml');
-    expect(result.message).toContain('参数');
+    expect(result.message).toContain('required args: id');
   });
 
   it('maps needs-human-check with empty-result (inspect-with-operate)', () => {

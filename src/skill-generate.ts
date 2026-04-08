@@ -50,7 +50,7 @@ const BLOCKED_MESSAGES: Record<StopReason, string> = {
 };
 
 const ESCALATION_MESSAGES: Record<EscalationReason, (ctx?: { args?: string; path?: string }) => string> = {
-  'unsupported-required-args': (ctx) => `候选需要参数 ${ctx?.args ?? '(unknown)'}，请提供示例值后重试`,
+  'unsupported-required-args': () => '候选需要用户提供必填参数的示例值后重试',
   'empty-result': () => '候选验证返回空结果，建议用 opencli-operate 检查',
   'sparse-fields': () => '候选验证结果字段不足，建议人工检查',
   'non-array-result': () => '返回结果不是数组格式，建议用 opencli-operate 检查接口返回结构',
@@ -93,7 +93,7 @@ export function mapOutcomeToSkillOutput(outcome: GenerateOutcome): SkillOutput {
         suggested_action: escalation?.suggested_action,
         reusability: outcome.reusability,
         path: candidatePath ?? undefined,
-        message: messageFn?.({ path: candidatePath ?? undefined }) ?? outcome.message ?? '需要人工检查',
+        message: outcome.message ?? messageFn?.({ path: candidatePath ?? undefined }) ?? '需要人工检查',
       };
     }
   }

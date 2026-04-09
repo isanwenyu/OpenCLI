@@ -46,4 +46,4 @@ opencli daemon stop      # Graceful shutdown
 opencli daemon restart   # Stop + restart
 ```
 
-Override the timeout via the `OPENCLI_DAEMON_TIMEOUT` environment variable (milliseconds). Set to `0` to keep the daemon alive indefinitely.
+The daemon is persistent — it stays alive until you explicitly stop it (`opencli daemon stop`) or uninstall the package.

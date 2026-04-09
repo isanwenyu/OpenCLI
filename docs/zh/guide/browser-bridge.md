@@ -33,4 +33,4 @@ opencli daemon stop      # 优雅关停
 opencli daemon restart   # 重启
 ```
 
-通过 `OPENCLI_DAEMON_TIMEOUT` 环境变量覆盖超时时间（毫秒）。设为 `0` 则永不超时。
+Daemon 为常驻模式，会一直运行直到你显式停止（`opencli daemon stop`）或卸载包。

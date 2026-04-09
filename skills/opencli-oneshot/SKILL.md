@@ -9,12 +9,6 @@ tags: [opencli, adapter, quick-start, ts, cli, one-shot, automation]
 > 给一个 URL + 一句话描述，4 步生成一个 CLI 命令。
 > 完整探索式开发请看 [opencli-explorer skill](../opencli-explorer/SKILL.md)。
 
-**遇到以下情况立即切换到 explorer，不要在 oneshot 里继续硬撑：**
-- Step 3 验证 fetch 始终拿不到数据（签名/风控，非 cookie/header 能解决的）
-- 需要 Pinia Store Action 触发 API
-- 同一站点要生成 2 个以上命令
-- `opencli browser network` 完全空，JS bundle 里也找不到 baseURL
-
 ---
 
 ## 输入
@@ -122,7 +116,7 @@ localStorage 有 token + Bearer header 能拿到？  → Tier 2.5: localStorage 
 ### TS — Cookie/Public（最简，`func()` 模式）
 
 ```typescript
-// clis/<site>/<name>.ts
+// ~/.opencli/clis/<site>/<name>.ts
 import { cli, Strategy } from '@jackwener/opencli/registry';
 
 cli({
@@ -158,7 +152,7 @@ cli({
 ### TS — localStorage Bearer（现代 SaaS）
 
 ```typescript
-// clis/<site>/<name>.ts
+// ~/.opencli/clis/<site>/<name>.ts
 import { cli, Strategy } from '@jackwener/opencli/registry';
 
 cli({
@@ -198,7 +192,7 @@ cli({
 ### TS — Intercept（抓包模式）
 
 ```typescript
-// clis/<site>/<name>.ts
+// ~/.opencli/clis/<site>/<name>.ts
 import { cli, Strategy } from '@jackwener/opencli/registry';
 
 cli({
@@ -284,19 +278,13 @@ cli({
 
 ## 测试（必做）
 
-<!-- keep in sync with explorer SKILL.md §Step4 -->
-> **两种开发场景**：
-> - **Repo 贡献**：文件放 `clis/<site>/<name>.ts`，`npm run build` 后自动注册
-> - **私人 adapter**（本地使用，无需提 PR）：文件放 `~/.opencli/clis/<site>/<name>.ts`，无需 build
+> **文件路径**：`~/.opencli/clis/<site>/<name>.ts`（opencli 从这里扫描注册，不是项目目录）
 
 ```bash
-# Repo 贡献：build 后直接运行
-npm run build
+opencli browser verify <site>/<name>      # 一键验证（推荐，自动检查注册+运行）
+# 或手动：
 opencli list | grep mysite                 # 确认注册
 opencli mysite mycommand --limit 3 -v      # 实际运行
-
-# 私人 adapter（~/.opencli/clis/）：一键验证
-opencli browser verify <site>/<name>
 ```
 
 **Done 标准**：命令运行后返回非空表格，且字段符合预期。
@@ -305,4 +293,4 @@ opencli browser verify <site>/<name>
 
 ## 就这样，没了
 
-写完文件 → build + run（Repo 贡献）或 browser verify（私人 adapter）→ 提交。有问题再看 [opencli-explorer skill](../opencli-explorer/SKILL.md)。
+写完文件 → verify → 提交。有问题再看 [opencli-explorer skill](../opencli-explorer/SKILL.md)。

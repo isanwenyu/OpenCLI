@@ -1,4 +1,15 @@
-import { cli, Strategy } from '@jackwener/opencli/registry';
+import { cli } from '@jackwener/opencli/registry';
+import { fetchXueqiuJson } from './utils.js';
+
+function strip(html: string): string {
+  return (html || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+}
 
 cli({
   site: 'xueqiu',
@@ -11,39 +22,20 @@ cli({
     { name: 'limit', type: 'int', default: 20, help: '每页数量，默认 20' },
   ],
   columns: ['author', 'text', 'likes', 'replies', 'url'],
-  pipeline: [
-    { navigate: 'https://xueqiu.com' },
-    { evaluate: `(async () => {
-  const page = \${{ args.page }};
-  const count = \${{ args.limit }};
-  const resp = await fetch(\`https://xueqiu.com/v4/statuses/home_timeline.json?page=\${page}&count=\${count}\`, {credentials: 'include'});
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');
-  const d = await resp.json();
-  
-  const strip = (html) => (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
-  const list = d.home_timeline || d.list || [];
-  return list.map(item => {
-    const user = item.user || {};
-    return {
-      id: item.id,
-      text: strip(item.description).substring(0, 200),
-      url: 'https://xueqiu.com/' + user.id + '/' + item.id,
-      author: user.screen_name,
-      likes: item.fav_count,
-      retweets: item.retweet_count,
-      replies: item.reply_count,
-      created_at: item.created_at ? new Date(item.created_at).toISOString() : null
-    };
-  });
-})()
-` },
-    { map: {
-        author: '${{ item.author }}',
-        text: '${{ item.text }}',
-        likes: '${{ item.likes }}',
-        replies: '${{ item.replies }}',
-        url: '${{ item.url }}',
-      } },
-    { limit: '${{ args.limit }}' },
-  ],
+  func: async (page, kwargs) => {
+    await page.goto('https://xueqiu.com');
+    const url = `https://xueqiu.com/v4/statuses/home_timeline.json?page=${kwargs.page}&count=${kwargs.limit}`;
+    const d = await fetchXueqiuJson(page, url);
+    if ('error' in d) return [d];
+    return ((d.home_timeline || d.list || []) as any[]).slice(0, kwargs.limit as number).map((item: any) => {
+      const user = item.user || {};
+      return {
+        author: user.screen_name,
+        text: strip(item.description).substring(0, 200),
+        likes: item.fav_count,
+        replies: item.reply_count,
+        url: 'https://xueqiu.com/' + user.id + '/' + item.id,
+      };
+    });
+  },
 });

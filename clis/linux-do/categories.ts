@@ -1,4 +1,5 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
+import { fetchLinuxDoJson } from './feed.js';
 
 cli({
   site: 'linux-do',
@@ -12,33 +13,27 @@ cli({
     { name: 'limit', type: 'int', default: 20, help: 'Number of categories' },
   ],
   columns: ['name', 'slug', 'id', 'topics', 'description'],
-  pipeline: [
-    { navigate: 'https://linux.do' },
-    { evaluate: `(async () => {
-  const res = await fetch('/categories.json', { credentials: 'include' });
-  if (!res.ok) throw new Error('HTTP ' + res.status + ' - 请先登录 linux.do');
-  let data;
-  try { data = await res.json(); } catch { throw new Error('响应不是有效 JSON - 请先登录 linux.do'); }
-  const cats = data?.category_list?.categories || [];
-  const showSub = \${{ args.subcategories }};
-  const results = [];
-  const limit = \${{ args.limit }};
-  for (const c of cats.slice(0, \${{ args.limit }})) {
-    results.push({
-      name: c.name,
-      slug: c.slug,
-      id: c.id,
-      topics: c.topic_count,
-      description: (c.description_text || '').slice(0, 80),
-    });
-    if (results.length >= limit) break;
-    if (showSub && c.subcategory_ids && c.subcategory_ids.length > 0) {
-      const subRes = await fetch('/categories.json?parent_category_id=' + c.id, { credentials: 'include' });
-      if (subRes.ok) {
-        let subData;
-        try { subData = await subRes.json(); } catch { continue; }
-        const subCats = subData?.category_list?.categories || [];
+  func: async (page, kwargs) => {
+    const data = await fetchLinuxDoJson(page, '/categories.json');
+    const cats = (data?.category_list?.categories || []) as any[];
+    const showSub = !!kwargs.subcategories;
+    const limit = kwargs.limit as number;
+    const results: any[] = [];
+
+    for (const c of cats) {
+      if (results.length >= limit) break;
+      results.push({
+        name: c.name,
+        slug: c.slug,
+        id: c.id,
+        topics: c.topic_count,
+        description: (c.description_text || '').slice(0, 80),
+      });
+      if (showSub && Array.isArray(c.subcategory_ids) && c.subcategory_ids.length > 0) {
+        const subData = await fetchLinuxDoJson(page, `/categories.json?parent_category_id=${c.id}`, { skipNavigate: true });
+        const subCats = (subData?.category_list?.categories || []) as any[];
         for (const sc of subCats) {
+          if (results.length >= limit) break;
           results.push({
             name: c.name + ' / ' + sc.name,
             slug: sc.slug,
@@ -46,21 +41,9 @@ cli({
             topics: sc.topic_count,
             description: (sc.description_text || '').slice(0, 80),
           });
-          if (results.length >= limit) break;
         }
       }
     }
-    if (results.length >= limit) break;
-  }
-  return results;
-})()
-` },
-    { map: {
-        name: '${{ item.name }}',
-        slug: '${{ item.slug }}',
-        id: '${{ item.id }}',
-        topics: '${{ item.topics }}',
-        description: '${{ item.description }}',
-      } },
-  ],
+    return results;
+  },
 });

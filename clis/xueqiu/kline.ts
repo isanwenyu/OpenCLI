@@ -1,4 +1,5 @@
-import { cli, Strategy } from '@jackwener/opencli/registry';
+import { cli } from '@jackwener/opencli/registry';
+import { fetchXueqiuJson } from './utils.js';
 
 cli({
   site: 'xueqiu',
@@ -16,50 +17,29 @@ cli({
     { name: 'days', type: 'int', default: 14, help: '回溯天数（默认14天）' },
   ],
   columns: ['date', 'open', 'high', 'low', 'close', 'volume'],
-  pipeline: [
-    { navigate: 'https://xueqiu.com' },
-    { evaluate: `(async () => {
-  const symbol = (\${{ args.symbol | json }} || '').toUpperCase();
-  const days = parseInt(\${{ args.days | json }}) || 14;
-  if (!symbol) throw new Error('Missing argument: symbol');
+  func: async (page, kwargs) => {
+    await page.goto('https://xueqiu.com');
+    const symbol = String(kwargs.symbol).toUpperCase();
+    const days = kwargs.days as number;
+    const beginTs = Date.now();
+    const url = `https://stock.xueqiu.com/v5/stock/chart/kline.json?symbol=${encodeURIComponent(symbol)}&begin=${beginTs}&period=day&type=before&count=-${days}`;
+    const d = await fetchXueqiuJson(page, url);
+    if ('error' in d) return [d];
+    if (!d.data?.item?.length) return [];
 
-  // begin = now minus days (for count=-N, returns N items ending at begin)
-  const beginTs = Date.now();
-  const resp = await fetch('https://stock.xueqiu.com/v5/stock/chart/kline.json?symbol=' + encodeURIComponent(symbol) + '&begin=' + beginTs + '&period=day&type=before&count=-' + days, {credentials: 'include'});
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');
-  const d = await resp.json();
+    const columns: string[] = d.data.column || [];
+    const colIdx: Record<string, number> = {};
+    columns.forEach((name: string, i: number) => { colIdx[name] = i; });
 
-  if (!d.data || !d.data.item || d.data.item.length === 0) return [];
-
-  const columns = d.data.column || [];
-  const items = d.data.item || [];
-  const colIdx = {};
-  columns.forEach((name, i) => { colIdx[name] = i; });
-
-  function fmt(v) { return v == null ? null : v; }
-
-  return items.map(row => ({
-    date: colIdx.timestamp != null ? new Date(row[colIdx.timestamp]).toISOString().split('T')[0] : null,
-    open: fmt(row[colIdx.open]),
-    high: fmt(row[colIdx.high]),
-    low: fmt(row[colIdx.low]),
-    close: fmt(row[colIdx.close]),
-    volume: fmt(row[colIdx.volume]),
-    amount: fmt(row[colIdx.amount]),
-    chg: fmt(row[colIdx.chg]),
-    percent: fmt(row[colIdx.percent]),
-    symbol: symbol
-  }));
-})()
-` },
-    { map: {
-        date: '${{ item.date }}',
-        open: '${{ item.open }}',
-        high: '${{ item.high }}',
-        low: '${{ item.low }}',
-        close: '${{ item.close }}',
-        volume: '${{ item.volume }}',
-        percent: '${{ item.percent }}',
-      } },
-  ],
+    return (d.data.item as any[][]).map(row => ({
+      date: colIdx.timestamp != null ? new Date(row[colIdx.timestamp]).toISOString().split('T')[0] : null,
+      open: row[colIdx.open] ?? null,
+      high: row[colIdx.high] ?? null,
+      low: row[colIdx.low] ?? null,
+      close: row[colIdx.close] ?? null,
+      volume: row[colIdx.volume] ?? null,
+      percent: row[colIdx.percent] ?? null,
+      symbol,
+    }));
+  },
 });

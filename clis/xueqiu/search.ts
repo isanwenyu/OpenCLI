@@ -1,4 +1,5 @@
-import { cli, Strategy } from '@jackwener/opencli/registry';
+import { cli } from '@jackwener/opencli/registry';
+import { fetchXueqiuJson } from './utils.js';
 
 cli({
   site: 'xueqiu',
@@ -11,40 +12,26 @@ cli({
     { name: 'limit', type: 'int', default: 10, help: '返回数量，默认 10' },
   ],
   columns: ['symbol', 'name', 'exchange', 'price', 'changePercent', 'url'],
-  pipeline: [
-    { navigate: 'https://xueqiu.com' },
-    { evaluate: `(async () => {
-  const query = \${{ args.query | json }};
-  const count = \${{ args.limit }};
-  const resp = await fetch(\`https://xueqiu.com/stock/search.json?code=\${encodeURIComponent(query)}&size=\${count}\`, {credentials: 'include'});
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');
-  const d = await resp.json();
-  return (d.stocks || []).map(s => {
-    let symbol = '';
-    if (s.exchange === 'SH' || s.exchange === 'SZ' || s.exchange === 'BJ') {
-      symbol = s.code.startsWith(s.exchange) ? s.code : s.exchange + s.code;
-    } else {
-      symbol = s.code;
-    }
-    return {
-      symbol: symbol,
-      name: s.name,
-      exchange: s.exchange,
-      price: s.current,
-      changePercent: s.percentage != null ? s.percentage.toFixed(2) + '%' : null,
-      url: 'https://xueqiu.com/S/' + symbol
-    };
-  });
-})()
-` },
-    { map: {
-        symbol: '${{ item.symbol }}',
-        name: '${{ item.name }}',
-        exchange: '${{ item.exchange }}',
-        price: '${{ item.price }}',
-        changePercent: '${{ item.changePercent }}',
-        url: '${{ item.url }}',
-      } },
-    { limit: '${{ args.limit }}' },
-  ],
+  func: async (page, kwargs) => {
+    await page.goto('https://xueqiu.com');
+    const url = `https://xueqiu.com/stock/search.json?code=${encodeURIComponent(String(kwargs.query))}&size=${kwargs.limit}`;
+    const d = await fetchXueqiuJson(page, url);
+    if ('error' in d) return [d];
+    return ((d.stocks || []) as any[]).slice(0, kwargs.limit as number).map((s: any) => {
+      let symbol = '';
+      if (s.exchange === 'SH' || s.exchange === 'SZ' || s.exchange === 'BJ') {
+        symbol = s.code.startsWith(s.exchange) ? s.code : s.exchange + s.code;
+      } else {
+        symbol = s.code;
+      }
+      return {
+        symbol,
+        name: s.name,
+        exchange: s.exchange,
+        price: s.current,
+        changePercent: s.percentage != null ? s.percentage.toFixed(2) + '%' : null,
+        url: 'https://xueqiu.com/S/' + symbol,
+      };
+    });
+  },
 });

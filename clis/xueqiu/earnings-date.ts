@@ -1,4 +1,5 @@
-import { cli, Strategy } from '@jackwener/opencli/registry';
+import { cli } from '@jackwener/opencli/registry';
+import { fetchXueqiuJson } from './utils.js';
 
 cli({
   site: 'xueqiu',
@@ -17,46 +18,30 @@ cli({
     { name: 'limit', type: 'int', default: 10, help: '返回数量，默认 10' },
   ],
   columns: ['date', 'report', 'status'],
-  pipeline: [
-    { navigate: 'https://xueqiu.com' },
-    { evaluate: `(async () => {
-  const symbol = (\${{ args.symbol | json }} || '').toUpperCase();
-  const onlyNext = \${{ args.next }};
-  if (!symbol) throw new Error('Missing argument: symbol');
-  const resp = await fetch(
-    \`https://stock.xueqiu.com/v5/stock/screener/event/list.json?symbol=\${encodeURIComponent(symbol)}&page=1&size=100\`,
-    { credentials: 'include' }
-  );
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');
-  const d = await resp.json();
-  if (!d.data || !d.data.items) throw new Error('获取失败: ' + JSON.stringify(d));
+  func: async (page, kwargs) => {
+    await page.goto('https://xueqiu.com');
+    const symbol = String(kwargs.symbol).toUpperCase();
+    const url = `https://stock.xueqiu.com/v5/stock/screener/event/list.json?symbol=${encodeURIComponent(symbol)}&page=1&size=100`;
+    const d = await fetchXueqiuJson(page, url);
+    if ('error' in d) return [d];
+    if (!d.data?.items) return [{ error: '获取失败: ' + symbol, help: '请确认股票代码是否正确' }];
 
-  // subtype 2 = 预计财报发布
-  let items = d.data.items.filter(item => item.subtype === 2);
+    // subtype 2 = 预计财报发布
+    const now = Date.now();
+    let results = (d.data.items as any[])
+      .filter((item: any) => item.subtype === 2)
+      .map((item: any) => {
+        const ts = item.timestamp;
+        const dateStr = ts ? new Date(ts).toISOString().split('T')[0] : null;
+        const isFuture = ts && ts > now;
+        return { date: dateStr, report: item.message, status: isFuture ? '⏳ 未发布' : '✅ 已发布', _ts: ts, _future: isFuture };
+      });
 
-  const now = Date.now();
-  let results = items.map(item => {
-    const ts = item.timestamp;
-    const dateStr = ts ? new Date(ts).toISOString().split('T')[0] : null;
-    const isFuture = ts && ts > now;
-    return {
-      date: dateStr,
-      report: item.message,
-      status: isFuture ? '⏳ 未发布' : '✅ 已发布',
-      _ts: ts,
-      _future: isFuture
-    };
-  });
+    if (kwargs.next) {
+      const future = results.filter((r: any) => r._future).sort((a: any, b: any) => a._ts - b._ts);
+      results = future.length ? [future[0]] : [];
+    }
 
-  if (onlyNext) {
-    const future = results.filter(r => r._future).sort((a, b) => a._ts - b._ts);
-    results = future.length ? [future[0]] : [];
-  }
-
-  return results;
-})()
-` },
-    { map: { date: '${{ item.date }}', report: '${{ item.report }}', status: '${{ item.status }}' } },
-    { limit: '${{ args.limit }}' },
-  ],
+    return results.slice(0, kwargs.limit as number).map(({ date, report, status }: any) => ({ date, report, status }));
+  },
 });

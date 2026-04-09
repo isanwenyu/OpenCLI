@@ -1,4 +1,5 @@
-import { cli, Strategy } from '@jackwener/opencli/registry';
+import { cli } from '@jackwener/opencli/registry';
+import { fetchXueqiuJson } from './utils.js';
 
 cli({
   site: 'xueqiu',
@@ -7,20 +8,15 @@ cli({
   domain: 'xueqiu.com',
   browser: true,
   columns: ['pid', 'name', 'count'],
-  pipeline: [
-    { navigate: 'https://xueqiu.com' },
-    { evaluate: `(async () => {
-  const resp = await fetch('https://stock.xueqiu.com/v5/stock/portfolio/list.json?category=1&size=20', {credentials: 'include'});
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');
-  const d = await resp.json();
-  if (!d.data || !d.data.stocks) throw new Error('获取失败，可能未登录');
-
-  return d.data.stocks.map(g => ({
-    pid: String(g.id),
-    name: g.name,
-    count: g.symbol_count || 0
-  }));
-})()
-` },
-  ],
+  func: async (page, _kwargs) => {
+    await page.goto('https://xueqiu.com');
+    const d = await fetchXueqiuJson(page, 'https://stock.xueqiu.com/v5/stock/portfolio/list.json?category=1&size=20');
+    if ('error' in d) return [d];
+    if (!d.data?.stocks) return [{ error: '获取失败', help: '请确认已登录雪球（https://xueqiu.com）' }];
+    return ((d.data.stocks || []) as any[]).map((g: any) => ({
+      pid: String(g.id),
+      name: g.name,
+      count: g.symbol_count || 0,
+    }));
+  },
 });

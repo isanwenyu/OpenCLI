@@ -1,4 +1,15 @@
-import { cli, Strategy } from '@jackwener/opencli/registry';
+import { cli } from '@jackwener/opencli/registry';
+import { fetchXueqiuJson } from './utils.js';
+
+function strip(html: string): string {
+  return (html || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+}
 
 cli({
   site: 'xueqiu',
@@ -10,36 +21,19 @@ cli({
     { name: 'limit', type: 'int', default: 20, help: '返回数量，默认 20，最大 50' },
   ],
   columns: ['rank', 'author', 'text', 'likes', 'url'],
-  pipeline: [
-    { navigate: 'https://xueqiu.com' },
-    { evaluate: `(async () => {
-  const resp = await fetch('https://xueqiu.com/statuses/hot/listV3.json?source=hot&page=1', {credentials: 'include'});
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');
-  const d = await resp.json();
-  const list = d.list || [];
-  
-  const strip = (html) => (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
-  return list.map((item, i) => {
-    const user = item.user || {};
-    return {
-      rank: i + 1,
-      text: strip(item.description).substring(0, 200),
-      url: 'https://xueqiu.com/' + user.id + '/' + item.id,
-      author: user.screen_name,
-      likes: item.fav_count,
-      retweets: item.retweet_count,
-      replies: item.reply_count
-    };
-  });
-})()
-` },
-    { map: {
-        rank: '${{ item.rank }}',
-        author: '${{ item.author }}',
-        text: '${{ item.text }}',
-        likes: '${{ item.likes }}',
-        url: '${{ item.url }}',
-      } },
-    { limit: '${{ args.limit }}' },
-  ],
+  func: async (page, kwargs) => {
+    await page.goto('https://xueqiu.com');
+    const d = await fetchXueqiuJson(page, 'https://xueqiu.com/statuses/hot/listV3.json?source=hot&page=1');
+    if ('error' in d) return [d];
+    return ((d.list || []) as any[]).slice(0, kwargs.limit as number).map((item: any, i: number) => {
+      const user = item.user || {};
+      return {
+        rank: i + 1,
+        author: user.screen_name,
+        text: strip(item.description).substring(0, 200),
+        likes: item.fav_count,
+        url: 'https://xueqiu.com/' + user.id + '/' + item.id,
+      };
+    });
+  },
 });

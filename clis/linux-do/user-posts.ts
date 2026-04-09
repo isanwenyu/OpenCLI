@@ -1,4 +1,28 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
+import { fetchLinuxDoJson } from './feed.js';
+
+function toLocalTime(utcStr: string): string {
+  if (!utcStr) return '';
+  const date = new Date(utcStr);
+  return Number.isNaN(date.getTime()) ? utcStr : date.toLocaleString();
+}
+
+function strip(html: string): string {
+  return (html || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|blockquote|h[1-6])>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(?:(\d+)|x([0-9a-fA-F]+));/g, (_, dec, hex) => {
+      try { return String.fromCodePoint(dec !== undefined ? Number(dec) : parseInt(hex, 16)); } catch { return ''; }
+    })
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 cli({
   site: 'linux-do',
@@ -12,51 +36,21 @@ cli({
     { name: 'limit', type: 'int', default: 20, help: 'Number of posts' },
   ],
   columns: ['index', 'topic_user', 'topic', 'reply', 'time', 'url'],
-  pipeline: [
-    { navigate: 'https://linux.do' },
-    { evaluate: `(async () => {
-  const username = \${{ args.username | json }};
-  const toLocalTime = (utcStr) => {
-    if (!utcStr) return '';
-    const date = new Date(utcStr);
-    return Number.isNaN(date.getTime()) ? utcStr : date.toLocaleString();
-  };
-  const strip = (html) => (html || '')
-    .replace(/<br\\s*\\/?>/gi, ' ')
-    .replace(/<\\/(p|div|li|blockquote|h[1-6])>/gi, ' ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#(?:(\\d+)|x([0-9a-fA-F]+));/g, (_, dec, hex) => {
-      try { return String.fromCodePoint(dec !== undefined ? Number(dec) : parseInt(hex, 16)); } catch { return ''; }
-    })
-    .replace(/\\s+/g, ' ')
-    .trim();
-  const limit = \${{ args.limit | default(20) }};
-  const res = await fetch('/user_actions.json?username=' + encodeURIComponent(username) + '&filter=5&offset=0&limit=' + limit, { credentials: 'include' });
-  if (!res.ok) throw new Error('HTTP ' + res.status + ' - 请先登录 linux.do');
-  let data;
-  try { data = await res.json(); } catch { throw new Error('响应不是有效 JSON - 请先登录 linux.do'); }
-  const actions = data?.user_actions || [];
-  return actions.slice(0, limit).map(a => ({
-    author: a.acting_username || a.username || '',
-    title: a.title || '',
-    content: strip(a.excerpt).slice(0, 200),
-    created_at: toLocalTime(a.created_at),
-    url: 'https://linux.do/t/topic/' + a.topic_id + '/' + a.post_number,
-  }));
-})()
-` },
-    { map: {
-        index: '${{ index + 1 }}',
-        topic_user: '${{ item.author }}',
-        topic: '${{ item.title }}',
-        reply: '${{ item.content }}',
-        time: '${{ item.created_at }}',
-        url: '${{ item.url }}',
-      } },
-  ],
+  func: async (page, kwargs) => {
+    const username = String(kwargs.username);
+    const limit = kwargs.limit as number;
+    const data = await fetchLinuxDoJson(
+      page,
+      `/user_actions.json?username=${encodeURIComponent(username)}&filter=5&offset=0&limit=${limit}`,
+    );
+    const actions = (data?.user_actions || []) as any[];
+    return actions.slice(0, limit).map((a: any, i: number) => ({
+      index: i + 1,
+      topic_user: a.acting_username || a.username || '',
+      topic: a.title || '',
+      reply: strip(a.excerpt).slice(0, 200),
+      time: toLocalTime(a.created_at),
+      url: 'https://linux.do/t/topic/' + a.topic_id + '/' + a.post_number,
+    }));
+  },
 });

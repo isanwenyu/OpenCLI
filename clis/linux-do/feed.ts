@@ -140,7 +140,7 @@ async function ensureLinuxDoHome(page: IPage | null): Promise<void> {
   await page.wait(2);
 }
 
-async function fetchLinuxDoJson(page: IPage | null, apiPath: string, options: FetchJsonOptions = {}): Promise<any> {
+export async function fetchLinuxDoJson(page: IPage | null, apiPath: string, options: FetchJsonOptions = {}): Promise<any> {
   if (!options.skipNavigate) {
     await ensureLinuxDoHome(page);
   }

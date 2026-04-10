@@ -1,5 +1,5 @@
 /** Validate CLI definitions from the registry (JS-first). */
-import { getRegistry, fullName, type CliCommand } from './registry.js';
+import { getRegistry, fullName, type CliCommand, type InternalCliCommand } from './registry.js';
 
 /** All recognized pipeline step names */
 const KNOWN_STEP_NAMES = new Set([
@@ -90,8 +90,9 @@ function validateCommand(cmd: CliCommand): CommandValidationResult {
     }
   }
 
-  // Commands should have either func or pipeline
-  if (!cmd.func && !cmd.pipeline) {
+  // Commands should have either func, pipeline, or be a lazy-loaded module
+  const internal = cmd as InternalCliCommand;
+  if (!cmd.func && !cmd.pipeline && !internal._lazy) {
     errors.push('Command has neither "func" nor "pipeline" — it cannot execute');
   }
 

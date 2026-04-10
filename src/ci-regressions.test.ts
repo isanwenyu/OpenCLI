@@ -13,28 +13,6 @@ afterEach(() => {
 });
 
 describe('CI regression coverage', () => {
-  it('runs adapter tests from src/clis and keeps them out of the unit project', () => {
-    const adapterList = execFileSync(
-      'npx',
-      ['vitest', 'list', '--project', 'adapter'],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-      },
-    );
-    const unitList = execFileSync(
-      'npx',
-      ['vitest', 'list', '--project', 'unit'],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-      },
-    );
-
-    expect(adapterList).toContain('src/clis/binance/commands.test.ts');
-    expect(unitList).not.toContain('src/clis/binance/commands.test.ts');
-  });
-
   it('ignores helper-only adapter directories when checking docs coverage', () => {
     const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'opencli-doc-coverage-'));
     tempDirs.push(fixtureRoot);

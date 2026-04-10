@@ -10,7 +10,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -39,7 +39,12 @@ export function parseDiagnosticText(input) {
   const markerBlock = new RegExp(`${DIAGNOSTIC_MARKER}\\n([\\s\\S]*?)\\n${DIAGNOSTIC_MARKER}`);
   const match = input.match(markerBlock);
   const jsonText = match ? match[1] : input.trim();
-  return JSON.parse(jsonText);
+  try {
+    return JSON.parse(jsonText);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse diagnostic output: ${message}`);
+  }
 }
 
 export function loadRepairContext(diagnosticPath) {
@@ -61,6 +66,12 @@ function codeFence(text) {
 
 function escapeInlineCode(value) {
   return String(value ?? '').replaceAll('`', '\\`');
+}
+
+function normalizePathForIssue(filePath) {
+  if (!filePath) return '(not available)';
+  const home = homedir();
+  return filePath.startsWith(home) ? `~${filePath.slice(home.length)}` : filePath;
 }
 
 function buildIssueTitle(repairContext) {
@@ -86,7 +97,7 @@ export function buildIssueDraft({
     };
   }
 
-  const sourcePath = repairContext?.adapter?.sourcePath || '(not available)';
+  const sourcePath = normalizePathForIssue(repairContext?.adapter?.sourcePath);
   const pageUrl = repairContext?.page?.url;
   const body = [
     '## Summary',
@@ -139,7 +150,11 @@ export function createIssueFromDraft(draft, execFile = execFileSync) {
   if (!draft?.title || !draft?.body) {
     throw new Error('Draft is missing title or body.');
   }
-  execFile('gh', ['auth', 'status'], { stdio: 'ignore' });
+  try {
+    execFile('gh', ['auth', 'status'], { stdio: 'ignore' });
+  } catch {
+    throw new Error('GitHub CLI (gh) is not installed or not authenticated. Run: gh auth login');
+  }
 
   const tempDir = mkdtempSync(join(tmpdir(), 'opencli-autofix-issue-'));
   const bodyPath = join(tempDir, 'body.md');

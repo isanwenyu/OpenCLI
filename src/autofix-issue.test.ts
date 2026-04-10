@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { homedir } from 'node:os';
 import {
   buildIssueDraft,
   createIssueFromDraft,
@@ -18,7 +19,7 @@ function makeContext(overrides: Partial<RepairContext> = {}): RepairContext {
     adapter: {
       site: 'zhihu',
       command: 'zhihu/hot',
-      sourcePath: '/Users/demo/.opencli/clis/zhihu/hot.js',
+      sourcePath: `${homedir()}/.opencli/clis/zhihu/hot.js`,
     },
     page: {
       url: 'https://www.zhihu.com/hot',
@@ -41,6 +42,10 @@ describe('parseDiagnosticText', () => {
     const ctx = makeContext();
     const raw = `stderr...\n___OPENCLI_DIAGNOSTIC___\n${JSON.stringify(ctx)}\n___OPENCLI_DIAGNOSTIC___\n`;
     expect(parseDiagnosticText(raw)).toEqual(ctx);
+  });
+
+  it('wraps invalid JSON with a clearer error', () => {
+    expect(() => parseDiagnosticText('not-json')).toThrow('Failed to parse diagnostic output:');
   });
 });
 
@@ -86,7 +91,7 @@ describe('buildIssueDraft', () => {
     expect(draft.title).toContain('zhihu/hot');
     expect(draft.title).toContain('SELECTOR');
     expect(draft.body).toContain('Updated selector from .old-selector to .new-selector; retry passed.');
-    expect(draft.body).toContain('/Users/demo/.opencli/clis/zhihu/hot.js');
+    expect(draft.body).toContain('~/.opencli/clis/zhihu/hot.js');
     expect(draft.body).toContain('1.7.0');
   });
 
@@ -123,5 +128,19 @@ describe('createIssueFromDraft', () => {
     expect(exec.mock.calls[1][0]).toBe('gh');
     expect(exec.mock.calls[1][1]).toContain('issue');
     expect(result.url).toContain('/issues/999');
+  });
+
+  it('surfaces a friendly error when gh is unavailable', () => {
+    const draft = buildIssueDraft({
+      repairContext: makeContext(),
+      summary: 'Retry passed.',
+      version: '1.7.0',
+    });
+    const exec = vi.fn().mockImplementationOnce(() => {
+      throw new Error('spawn gh ENOENT');
+    });
+
+    expect(() => createIssueFromDraft(draft, exec))
+      .toThrow('GitHub CLI (gh) is not installed or not authenticated. Run: gh auth login');
   });
 });

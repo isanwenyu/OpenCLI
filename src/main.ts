@@ -24,7 +24,9 @@ import { EXIT_CODES } from './errors.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const BUILTIN_CLIS = path.resolve(__dirname, '..', 'clis');
+// Adapters are JS-first and live at <package-root>/clis/.
+// At runtime __dirname is dist/src/, so go up two levels.
+const BUILTIN_CLIS = path.resolve(__dirname, '..', '..', 'clis');
 const USER_CLIS = path.join(os.homedir(), '.opencli', 'clis');
 
 // ── Ultra-fast path: lightweight commands bypass full discovery ──────────

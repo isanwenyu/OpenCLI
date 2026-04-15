@@ -60,6 +60,7 @@ export type DoctorReport = {
   cliVersion?: string;
   daemonRunning: boolean;
   daemonFlaky?: boolean;
+  daemonVersion?: string;
   extensionConnected: boolean;
   extensionFlaky?: boolean;
   extensionVersion?: string;
@@ -131,13 +132,27 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
       'This usually means the Browser Bridge service worker is reconnecting slowly or Chrome suspended it.',
     );
   } else if (daemonRunning && !extensionConnected) {
-    issues.push(
-      'Daemon is running but the Chrome/Chromium extension is not connected.\n' +
-      'Please install the opencli Browser Bridge extension:\n' +
-      '  1. Download from https://github.com/jackwener/opencli/releases\n' +
-      '  2. Open chrome://extensions/ → Enable Developer Mode\n' +
-      '  3. Click "Load unpacked" → select the extension folder',
-    );
+    const daemonVersion = health.status?.daemonVersion;
+    const isStale = opts.cliVersion && (!daemonVersion || daemonVersion !== opts.cliVersion);
+    if (isStale) {
+      const reason = daemonVersion
+        ? `daemon v${daemonVersion} ≠ CLI v${opts.cliVersion}`
+        : `daemon predates version reporting, CLI is v${opts.cliVersion}`;
+      issues.push(
+        `Stale daemon detected: ${reason}.\n` +
+        'The daemon was started by an older CLI version and may have missed the extension registration.\n' +
+        '  Quick fix: opencli daemon stop && opencli doctor',
+      );
+    } else {
+      issues.push(
+        'Daemon is running but the Chrome/Chromium extension is not connected.\n' +
+        'If the extension is already installed, try: opencli daemon stop && opencli doctor\n' +
+        'If the extension is not installed:\n' +
+        '  1. Download from https://github.com/jackwener/opencli/releases\n' +
+        '  2. Open chrome://extensions/ → Enable Developer Mode\n' +
+        '  3. Click "Load unpacked" → select the extension folder',
+      );
+    }
   }
   if (connectivity && !connectivity.ok) {
     issues.push(`Browser connectivity test failed: ${connectivity.error ?? 'unknown'}`);
@@ -177,6 +192,7 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
     cliVersion: opts.cliVersion,
     daemonRunning,
     daemonFlaky,
+    daemonVersion: health.status?.daemonVersion,
     extensionConnected,
     extensionFlaky,
     extensionVersion,
@@ -196,7 +212,7 @@ export function renderBrowserDoctorReport(report: DoctorReport): string {
     : report.daemonRunning ? styleText('green', '[OK]') : styleText('red', '[MISSING]');
   const daemonLabel = report.daemonFlaky
     ? 'unstable (running during live check, then stopped)'
-    : report.daemonRunning ? `running on port ${DEFAULT_DAEMON_PORT}` : 'not running';
+    : report.daemonRunning ? `running on port ${DEFAULT_DAEMON_PORT}` + (report.daemonVersion ? ` (v${report.daemonVersion})` : '') : 'not running';
   lines.push(`${daemonIcon} Daemon: ${daemonLabel}`);
 
   // Extension status
